@@ -1,0 +1,25 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: jdbc:sqlite:D:/demo/commerce platform/shop/shop.db?foreign_keys=on
+  redis:
+    host: 47.100.22.158
+    port: 6379
+    timeout: 3000ms
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  token:
+    # ★ 多人共用老师同一台 Redis，key 必须带自己的前缀，否则会和同学撞车
+    # ★★ 值里的冒号会被 YAML 当成"键值分隔符"，所以整串必须用双引号包起来
+    key-prefix: "zhanghao:shop:token:"
+  cache:
+    # ★ 同一个坑：行尾冒号不加引号就报 mapping values are not allowed here
+    key-prefix: "zhanghao:shop:cache:"

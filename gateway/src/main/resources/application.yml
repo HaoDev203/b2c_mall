@@ -1,0 +1,13 @@
+server:
+  port: 8090
+
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: shop_route
+          uri: lb://shop
+          predicates:
+            - Path=/shop/**
+          filters:
+            - StripPrefix=1

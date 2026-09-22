@@ -1,0 +1,595 @@
+### 接口测试合集 —— 用 IDEA 打开本文件，点每行左侧的绿色箭头即可发送请求
+### （IDEA 内置 HTTP Client，无需安装任何东西）
+
+### ⚠️ 09-15 起加了令牌校验：下面 1、2 号接口现在会返回 401（这是对的！）
+###    要调通请先跑文件末尾的 C 拿令牌，再带 Authorization 头（见 E）
+
+### 1. 直连 shop（不经过网关）—— 现在期望 401
+GET http://localhost:8081/test/hello
+
+### 2. 走网关（验证路由 + StripPrefix=1）—— 现在期望 401
+GET http://localhost:8090/shop/test/hello
+
+### 3. 查 Nacos 上 zhanghao 空间的服务列表
+### 期望看到 gateway 和 shop 两个服务
+GET http://47.100.22.158:8848/nacos/v1/ns/service/list?pageNo=1&pageSize=50&namespaceId=zhanghao
+
+### 4. 查 gateway 的实例详情
+### 加了 metadata.student 之后，响应里能看到 "student": "张浩"
+GET http://47.100.22.158:8848/nacos/v1/ns/instance/list?serviceName=gateway&namespaceId=zhanghao
+
+### 5. 查 shop 的实例详情
+GET http://47.100.22.158:8848/nacos/v1/ns/instance/list?serviceName=shop&namespaceId=zhanghao
+
+### 6. 查所有命名空间（确认 zhanghao 已创建）
+GET http://47.100.22.158:8848/nacos/v1/console/namespaces
+
+
+### ============ 下面是 POST 请求的写法模板（等 shop 写了 POST 接口再改路径用）============
+
+### POST 示例（JSON 请求体）
+# POST http://localhost:8090/shop/user/add
+# Content-Type: application/json
+#
+# {
+#   "name": "zhanghao",
+#   "age": 20
+# }
+
+
+### ============ 没有后端时，可以用这些公共测试接口练手 ============
+
+### 公共测试接口 1：httpbin（会把你发的内容原样返回，适合调试）
+# GET https://httpbin.org/get
+
+### 公共测试接口 2：jsonplaceholder（假数据 API，适合练 REST 增删改查）
+# GET https://jsonplaceholder.typicode.com/posts/1
+### A. 直连 shop —— 注册
+POST http://localhost:8081/auth/register
+Content-Type: application/json
+
+{"shopName":"测试店铺","username":"admin","password":"123456"}
+
+### B. 直连 shop —— 登录
+POST http://localhost:8081/auth/login
+Content-Type: application/json
+
+{"username":"admin","password":"123456"}
+
+### C. 走网关 —— 登录（验证完整链路）
+# @name login
+POST http://localhost:8090/shop/auth/login
+Content-Type: application/json
+
+{"username":"admin","password":"123456"}
+
+> {%
+    // ★ 响应后置脚本：把令牌存进「全局变量 token」，后面的请求用 {{token}} 取
+    // 兼容写法：老版本 IDEA 把 JSON 直接解析进 response.body，
+    //           新版本额外提供 response.body.json —— 两种都能取到
+    var body = response.body;
+    var token = (body && body.json) ? body.json.data : body.data;
+    client.global.set("token", token);
+    client.log("令牌已存入全局变量 token = " + token);
+%}
+
+
+### ============ Token 令牌校验专项测试 ============
+### ★★★ 重要：先点 C（会执行响应脚本，把令牌存进全局变量 token），再点下面的 E / G / H
+### 机制：C 末尾的 `> {% client.global.set("token", ...) %}` 是响应后置脚本，
+###       跑完 C 之后 {{token}} 才有值。没跑 C 直接点 E 会报
+###       "Invalid request because of unsubstituted variable 'token'" —— 不是配置错。
+### ⚠️ IDEA 重启后全局变量会清空，要重新点一次 C。
+### 期望：D 返回 401；E 返回 200；F 返回 401；G 返回 200；H 又变回 401（证明令牌被销毁了）
+
+### D. 不带令牌访问受保护接口 —— 期望 401「未登录或登录已过期」
+GET http://localhost:8090/shop/test/hello
+
+### E. 带令牌（自动引用 C 的返回值 data）—— 期望 200 hello from shop
+GET http://localhost:8090/shop/test/hello
+Authorization: Bearer {{token}}
+
+### F. 令牌篡改一位（把最后一个字符改成 x）—— 期望 401
+### 手动把下面那串换成「登录返回的 token 去掉最后一位 + x」
+GET http://localhost:8090/shop/test/hello
+Authorization: Bearer 0000000000000000000000000000000x
+
+### G. 退出登录 —— 期望 200
+POST http://localhost:8090/shop/auth/logout
+Authorization: Bearer {{token}}
+
+### H. 退出后再访问 —— 期望 401（Redis 里的 key 已被删除）
+GET http://localhost:8090/shop/test/hello
+Authorization: Bearer {{token}}
+
+
+### ============ 备用：手动模式 ============
+### 如果自动引用一直报 "unsubstituted variable"，就用下面这三个手动版：
+### 把 C 返回的 data 那串 32 位令牌复制出来，替换掉 PASTE_TOKEN_HERE 即可（别加引号）
+
+### E2.（手动）带正确令牌 —— 期望 200 hello from shop
+GET http://localhost:8090/shop/test/hello
+Authorization: Bearer PASTE_TOKEN_HERE
+
+### G2.（手动）退出登录 —— 期望 200
+POST http://localhost:8090/shop/auth/logout
+Authorization: Bearer PASTE_TOKEN_HERE
+
+### H2.（手动）退出后再访问 —— 期望 401
+GET http://localhost:8090/shop/test/hello
+Authorization: Bearer PASTE_TOKEN_HERE
+
+
+### ============ 阶段 2 · Dashboard 消息列表 + Redis 缓存 ============
+### ★ 先跑上面的 C 拿令牌（Dashboard 接口受 AuthInterceptor 保护，不带令牌一律 401）
+### ★ 顺序：C → I → J → K → L → M → N
+### ★ J 和 K 之间要快！未读数缓存只有 60 秒，慢了两次都变「回源查库」，看不出缓存效果
+### 数据准备：sql/tb_messages-seed.sql 已执行 → 共 6 条消息，未读 4 条
+
+### I. 消息列表 —— 期望 200，data 里 6 条（按 id 倒序）
+GET http://localhost:8090/shop/dashboard/messages
+Authorization: Bearer {{token}}
+
+### J. 未读数（第一次：日志应显示【回源查库】）—— 期望 200，"data": 4
+GET http://localhost:8090/shop/dashboard/messages/unread
+Authorization: Bearer {{token}}
+
+### K. 马上再点一次（日志应显示【命中缓存】）—— 期望 200，"data": 4
+GET http://localhost:8090/shop/dashboard/messages/unread
+Authorization: Bearer {{token}}
+
+### L. 把 id=1（欢迎入驻）标记为已读 —— 期望 200
+POST http://localhost:8090/shop/dashboard/messages/1/read
+Authorization: Bearer {{token}}
+
+### M. 再看未读数 —— 期望 200，"data": 3（缓存已删，日志又变【回源查库】）
+GET http://localhost:8090/shop/dashboard/messages/unread
+Authorization: Bearer {{token}}
+
+### N. 不带令牌 —— 期望 401（证明 Dashboard 也受令牌保护）
+GET http://localhost:8090/shop/dashboard/messages
+
+
+### ============ 阶段 3 · 商品发布（模板方法模式）============
+### ★ 先跑上面的 C 拿令牌（/product/** 同样受 AuthInterceptor 保护，不带令牌一律 401）
+### 数据准备：sql/tb_product-ddl.sql 已执行 → 6 条类目（2=手机，5=电子卡券）
+
+### O. 发布实物商品（正常）—— 期望 200，data.status = "on_sale"
+POST http://localhost:8090/shop/product/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "小米 15 手机",
+  "keyword": "小米,手机,5G",
+  "sellingPoint": "骁龙旗舰芯片",
+  "categoryId": 2,
+  "productType": "physical",
+  "brand": "小米",
+  "mainImage": "/img/x15.png",
+  "price": 4299.00,
+  "marketPrice": 4599.00,
+  "stock": 100,
+  "stockWarn": 10
+}
+
+### P. 发布实物商品，库存传 0 —— 期望 code 500「实物商品库存必须大于 0（当前：0）」
+###    ★ 需求 Step 3.6 第一条自测：实物钩子生效
+POST http://localhost:8090/shop/product/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "库存为零的手机",
+  "categoryId": 2,
+  "productType": "physical",
+  "price": 1999.00,
+  "stock": 0
+}
+
+### Q. 发布虚拟商品（正常，有效期在未来）—— 期望 200
+###    ★ 注意 stock = 0 但仍然成功上架 —— 证明虚拟商品不校验库存
+POST http://localhost:8090/shop/product/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "腾讯视频季卡",
+  "keyword": "腾讯,会员",
+  "categoryId": 5,
+  "productType": "virtual",
+  "price": 58.00,
+  "marketPrice": 68.00,
+  "stock": 0,
+  "productCode": "CARD-TX-001",
+  "validEndTime": "2027-12-31"
+}
+
+### R. 发布虚拟商品，缺 productCode —— 期望 code 500「虚拟商品必须填写卡券编号 / 资质编号」
+POST http://localhost:8090/shop/product/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "没有编号的卡券",
+  "categoryId": 5,
+  "productType": "virtual",
+  "price": 58.00,
+  "validEndTime": "2027-12-31"
+}
+
+### S. 发布虚拟商品，有效期已过期 —— 期望 code 500「卡券已过期，不能上架」
+POST http://localhost:8090/shop/product/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "过期卡券",
+  "categoryId": 5,
+  "productType": "virtual",
+  "price": 58.00,
+  "productCode": "CARD-OLD-001",
+  "validEndTime": "2020-01-01"
+}
+
+### T. 类目不存在 —— 期望 code 500「类目不存在：categoryId=999」
+###    证明骨架第 2 步（类目归属校验）真的执行了
+POST http://localhost:8090/shop/product/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "类目错乱的商品",
+  "categoryId": 999,
+  "productType": "physical",
+  "price": 100.00,
+  "stock": 5
+}
+
+### U. 组合商品（未开放）—— 期望 code 500「组合商品暂未开放发布...」
+###    证明工厂分发在工作，而不是所有类型都走同一个实现
+POST http://localhost:8090/shop/product/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "组合套餐",
+  "categoryId": 2,
+  "productType": "combo",
+  "price": 100.00,
+  "stock": 5
+}
+
+### V. 商品列表（不筛）—— 期望 200，至少 2 条
+GET http://localhost:8090/shop/product/list
+Authorization: Bearer {{token}}
+
+### W. 商品列表（只要虚拟商品）—— 期望 200，1 条
+GET http://localhost:8090/shop/product/list?productType=virtual
+Authorization: Bearer {{token}}
+
+### X. 商品列表（关键词=腾讯）—— 期望 200，1 条
+GET http://localhost:8090/shop/product/list?keyword=腾讯
+Authorization: Bearer {{token}}
+
+### Y. 下架商品 —— 期望 200（把 1 换成 O 返回的 data.id）
+POST http://localhost:8090/shop/product/1/status?status=off_sale
+Authorization: Bearer {{token}}
+
+### Z. 不带令牌发布 —— 期望 401「未登录或登录已过期」
+POST http://localhost:8090/shop/product/publish
+Content-Type: application/json
+
+{
+  "name": "未授权商品",
+  "categoryId": 2,
+  "productType": "physical",
+  "price": 100.00,
+  "stock": 5
+}
+
+### ============================================================
+### 阶段 4 · 订单 + 状态机（AA ~ AK）
+### ★ 先跑 C 登录拿 token，再按顺序跑这里
+### ============================================================
+
+### AA. 订单列表（不筛）—— 期望 200，total=2
+GET http://localhost:8090/shop/order/list
+Authorization: Bearer {{token}}
+
+### AB. 订单列表（Tab：待发货）—— 期望 200，total=1
+GET http://localhost:8090/shop/order/list?status=PENDING_SHIP
+Authorization: Bearer {{token}}
+
+### AC. ★ 状态机规则全览 —— 期望 200，8 条规则（答辩展示用）
+GET http://localhost:8090/shop/order/rules
+Authorization: Bearer {{token}}
+
+### AD. 订单 1 详情 —— 期望 200，statusCn=待发货，statusLog 为空数组
+GET http://localhost:8090/shop/order/1
+Authorization: Bearer {{token}}
+
+### AE. ★★ 对「待付款」订单（2）发货 —— 期望 code=500
+###     报错文案应为：订单当前状态【待付款】不允许执行【发货】
+###     ★ 这一条跑通了，说明状态机真的在拦非法流转
+POST http://localhost:8090/shop/order/ship
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "orderId": 2
+}
+
+### AF. ★★ 对「待发货」订单（1）发货 —— 期望 200，提示"订单状态：待收货"
+POST http://localhost:8090/shop/order/ship
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "orderId": 1
+}
+
+### AG. ★★ 再发一次同一订单 —— 期望 code=500
+###     报错应为：订单当前状态【待收货】不允许执行【发货】
+###     ★ 证明「不能重复发货」
+POST http://localhost:8090/shop/order/ship
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "orderId": 1
+}
+
+### AH. 订单 1 详情 —— 期望 status=PENDING_RECEIVE、shipTime 有值、statusLog 有 1 条
+GET http://localhost:8090/shop/order/1
+Authorization: Bearer {{token}}
+
+### AI. 确认收货 —— 期望 200，提示"订单状态：交易成功"
+POST http://localhost:8090/shop/order/confirm
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "orderId": 1
+}
+
+### AJ. Dashboard 订单卡片 —— 期望 200，success=1、pendingPay=1
+GET http://localhost:8090/shop/dashboard/order-summary
+Authorization: Bearer {{token}}
+
+### AK. 不带令牌查订单 —— 期望 401「未登录或登录已过期」
+GET http://localhost:8090/shop/order/list
+
+
+### ============================================================
+### 阶段 5：前台商品列表 + 注册 / 登录（观察者复用）
+### ============================================================
+
+### AL. 前台注册买家 buyer01 —— 期望 200「注册成功」
+POST http://localhost:8090/shop/mall/auth/register
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "123456",
+  "nickname": "小张"
+}
+
+### AM. 重复注册同一账号 —— 期望 code=500「账号已存在」
+POST http://localhost:8090/shop/mall/auth/register
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "123456"
+}
+
+### AN. ★ 前台登录 —— 期望 200，返回字符串令牌
+###     ★★ 回执里的 token 会被下面这行 Post-script 存成全局变量 mallToken
+###     ★ 必须先跑这条，后面的 AY 才能用 {{mallToken}}
+POST http://localhost:8090/shop/mall/auth/login
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("mallToken", response.body.data);
+%}
+
+### AO. 前台登录密码错误 —— 期望 code=500「密码错误」
+POST http://localhost:8090/shop/mall/auth/login
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "wrong-pwd"
+}
+
+### AP. ★★ 商品列表（不带任何令牌）—— 期望 200，total=6
+###     ★ 证明前台接口真的免登录
+###     ★ 连点两次，第二次控制台日志应出现「命中缓存」
+###     默认排序（sort DESC, id DESC）的完整顺序：
+###     拯救者(90) → 键盘(80) → 点卡(70) → T恤(60) → 腾讯季卡(0) → 小米15(0)
+GET http://localhost:8090/shop/mall/product/list
+
+### AQ. 按分类筛选 —— 期望只返回 categoryId=3 的 2 条（拯救者 + 键盘）
+GET http://localhost:8090/shop/mall/product/list?categoryId=3
+
+### AR. 按价格升序 —— 期望第一条是「腾讯视频季卡」（58 元）
+###     完整顺序：腾讯季卡 58 → T恤 89 → 点卡 100 → 键盘 499 → 小米15 4299 → 拯救者 8299
+GET http://localhost:8090/shop/mall/product/list?sort=price
+
+### AS. 按销量降序 —— 期望第一条是「游戏点卡 100 元」（sales=3280）
+###     完整顺序：点卡 3280 → 腾讯季卡 1204 → T恤 760 → 键盘 512 → 小米15 328 → 拯救者 86
+GET http://localhost:8090/shop/mall/product/list?sort=sales
+
+### AT. 分页 —— 期望 size=2、pages=3、hasNext=true
+GET http://localhost:8090/shop/mall/product/list?page=1&size=2
+
+### AU. 关键词搜索 —— 期望命中含「机械」的 1 条
+GET http://localhost:8090/shop/mall/product/list?keyword=机械
+
+### AV. ★ 非法排序参数 —— 期望 200 且走默认排序（不得报 500、不得查出下架商品）
+###     ★ 验证白名单兜底真的生效。分号用 %3B 编码，避免被当成参数分隔符
+GET http://localhost:8090/shop/mall/product/list?sort=id%3BDROP%20TABLE%20tb_order
+
+### AW. 商品详情（在售）—— 期望 200
+GET http://localhost:8090/shop/mall/product/1
+
+### AX. 商品详情（已下架）—— 期望 code=500「商品不存在或已下架」
+GET http://localhost:8090/shop/mall/product/7
+
+### AY. ★ 用前台令牌调后台接口 —— 期望 code=500「未获取到店铺信息」
+###     ★ 证明买家令牌越权不了后台
+GET http://localhost:8090/shop/product/list
+Authorization: Bearer {{mallToken}}
+
+### AZ. 分类列表 —— 期望 6 条，一级分类 3 条
+GET http://localhost:8090/shop/mall/category/list
+
+
+### ============================================================
+### 阶段 6：前台购物车 + 下单支付（策略 + 状态模式）
+### 前置：必须先跑 C（后台登录拿 {{token}}）+ AN（前台登录拿 {{mallToken}}）
+### ============================================================
+
+### BA. 未登录加购物车 —— 期望 401（购物车不在白名单里）
+POST http://localhost:8090/shop/mall/cart/add
+Content-Type: application/json
+
+{
+  "productId": 1,
+  "quantity": 1
+}
+
+### BB. 加入购物车：小米15 × 1（4299 元）—— 期望 200「已加入购物车」
+POST http://localhost:8090/shop/mall/cart/add
+Authorization: Bearer {{mallToken}}
+Content-Type: application/json
+
+{
+  "productId": 1,
+  "quantity": 1
+}
+
+### BC. 加入购物车：机械键盘 × 2（499 × 2 = 998，凑满 4299+998=5297 > 1200）
+POST http://localhost:8090/shop/mall/cart/add
+Authorization: Bearer {{mallToken}}
+Content-Type: application/json
+
+{
+  "productId": 4,
+  "quantity": 2
+}
+
+### BD. 重复加购同一商品 —— 期望 200，且数量是「累加」不是新增一行（键盘应变 3 件）
+POST http://localhost:8090/shop/mall/cart/add
+Authorization: Bearer {{mallToken}}
+Content-Type: application/json
+
+{
+  "productId": 4,
+  "quantity": 1
+}
+
+### BE. 购物车列表 —— 期望 200，2 种商品，键盘数量=3，subtotal 正确
+GET http://localhost:8090/shop/mall/cart/list
+Authorization: Bearer {{mallToken}}
+
+### BF. ★★ 结算预览 —— 期望 totalAmount=5796、discountAmount=120、payAmount=5676
+###     计算：4299 + 499×3 = 4299 + 1497 = 5796；满 1200 减 120 → 5676
+###     ★ 优惠来自 tb_promotion 表，不是写死的 if
+GET http://localhost:8090/shop/mall/cart/preview
+Authorization: Bearer {{mallToken}}
+
+### BG. ★★ 提交订单 —— 期望 200，status=PENDING_PAY，payTypes 有 4 个选项
+POST http://localhost:8090/shop/mall/order/submit
+Authorization: Bearer {{mallToken}}
+Content-Type: application/json
+
+{
+  "receiverName": "小张",
+  "receiverPhone": "13800138001",
+  "receiverAddress": "北京市朝阳区望京街道 1 号",
+  "remark": "尽快发货",
+  "payType": "alipay"
+}
+
+> {%
+    client.global.set("orderId", response.body.data.orderId);
+%}
+
+### BH. 提交后购物车应清空 —— 期望 200，list 为空数组
+GET http://localhost:8090/shop/mall/cart/list
+Authorization: Bearer {{mallToken}}
+
+### BI. ★★ 状态模式展示（支付前）—— 期望 stateClass=PendingPayState
+GET http://localhost:8090/shop/mall/order/{{orderId}}/state
+Authorization: Bearer {{mallToken}}
+
+### BJ. ★● 在「待付款」状态调后台发货 —— 期望 500「订单当前状态【待付款】不允许执行【发货】」
+###     ★ 这是需求 Step 6.5 的第三条自测！证明状态拦住了非法操作
+###     注意：这条走的是后台 /order/ship，需要后台令牌 {{token}}（先跑 C）
+POST http://localhost:8090/shop/order/ship
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}}
+}
+
+### BK. ★●● 支付：选支付宝 —— 期望 payType=alipay、状态 待付款 → 待发货
+###     ★★ 这条同时验证了策略模式（走 AlipayStrategy）和状态模式（自动流转）
+POST http://localhost:8090/shop/mall/order/pay
+Authorization: Bearer {{mallToken}}
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "payType": "alipay"
+}
+
+### BL. ★★ 状态模式展示（支付后）—— 期望 stateClass=PendingShipState
+###     ★ 同一个接口、同一个订单，状态对象变了 —— 这就是状态模式
+GET http://localhost:8090/shop/mall/order/{{orderId}}/state
+Authorization: Bearer {{mallToken}}
+
+### BM. ★ 重复支付 —— 期望 500「订单当前状态【待发货】不允许执行【支付】」
+POST http://localhost:8090/shop/mall/order/pay
+Authorization: Bearer {{mallToken}}
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "payType": "alipay"
+}
+
+### BN. 我的订单列表 —— 期望 200，total>=1
+GET http://localhost:8090/shop/mall/order/list
+Authorization: Bearer {{mallToken}}
+
+### BO. 我的订单详情 —— 期望含 items + statusLog（有 PAY_SUCCESS 留痕）
+GET http://localhost:8090/shop/mall/order/{{orderId}}
+Authorization: Bearer {{mallToken}}
+
+### BP. ★ 收银台支付方式列表 —— 期望 4 个：alipay / wechat / paypal / other
+GET http://localhost:8090/shop/mall/order/pay-types
+Authorization: Bearer {{mallToken}}
+
+### BQ. 不支持的支付方式 —— 期望 500「不支持的支付方式：bitcoin」
+POST http://localhost:8090/shop/mall/order/pay
+Authorization: Bearer {{mallToken}}
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "payType": "bitcoin"
+}
+
+### BR. 用后台令牌看买家订单 —— 期望 500「订单不存在或不属于当前用户」
+GET http://localhost:8090/shop/mall/order/{{orderId}}
+Authorization: Bearer {{token}}
+

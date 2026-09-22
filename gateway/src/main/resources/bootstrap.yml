@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 47.100.22.158:8848
+        namespace: zhanghao
+        metadata:
+          student: 张浩
+      config:
+        server-addr: 47.100.22.158:8848
+        namespace: zhanghao
+        file-extension: yml

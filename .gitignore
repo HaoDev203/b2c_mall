@@ -1,0 +1,50 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### 本项目补充：本地运行产物（勿提交）###
+# 在工程目录里误启动 Nacos 会生成下面三样
+derby.log
+logs/
+work/
+
+# SQLite 运行库（含本地测试数据，非源码）
+*.db
+
+### 本项目补充：工具目录（勿提交，含数据库备份）###
+.workbuddy/
+
+### 本项目补充：Spring Initializr 误创建的残留骨架 ###
+# 根 pom 的 packaging=pom，这个 /src/ 属于 org.example.commerceplatform，与项目无关
+/src/
+
