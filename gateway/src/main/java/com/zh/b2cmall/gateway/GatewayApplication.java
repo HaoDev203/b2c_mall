@@ -1,4 +1,4 @@
-package com.lxs.b2cmall.gateway;
+package com.zh.b2cmall.gateway;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

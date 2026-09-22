@@ -41,7 +41,7 @@ b2c_mall
 ├── pom.xml                 # 父 POM：聚合模块 + 统一依赖版本管理
 ├── gateway/                # 网关模块（端口 8090）
 │   └── src/main/
-│       ├── java/com/lxs/b2cmall/gateway/GatewayApplication.java
+│       ├── java/com/zh/b2cmall/gateway/GatewayApplication.java
 │       └── resources/
 │           ├── application.yml     # 路由规则 + StripPrefix
 │           └── bootstrap.yml       # Nacos 注册与配置
