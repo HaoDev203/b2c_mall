@@ -9,7 +9,7 @@
 
 | 项        | 状态                                                                  |
 | -------- | ------------------------------------------------------------------- |
-| 分支       | `feature/tdd-mall-auth`（从 `main` 拉出）                                |
+| 分支       | `feature/tdd-mall-auth`（从 `main` 拉出）——⚠️ **每完成一个批次要合并回 `main` 并推送**，因为老师打开仓库默认只看到 `main`（详见 `执行清单.md` 0.1.1） |
 | 模块       | `mall-auth`（`com.zh.b2cmall.auth`，包名 `com.mall.auth`，端口 8082）       |
 | 测试依赖     | 根 POM 已统一管理 `spring-boot-starter-test`                              |
 | surefire | 已钉死 `3.2.5` + `-Dfile.encoding=UTF-8`                               |
