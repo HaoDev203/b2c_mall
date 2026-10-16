@@ -11,6 +11,7 @@
     <modules>
         <module>gateway</module>
         <module>shop</module>
+        <module>mall-auth</module>
 
     </modules>
 
@@ -70,7 +71,32 @@
                 <artifactId>spring-boot-starter-validation</artifactId>
                 <version>${spring-boot.version}</version>
             </dependency>
+            <!-- ★ 本项目没有继承 spring-boot-starter-parent，测试依赖的版本也必须在这里手写 -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-test</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
         </dependencies>
 
     </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!-- ★★ 关键：没有 parent POM 时，surefire 的版本不受任何管理，
+                     会退回 Maven 内置默认值。旧版 surefire 不认识 JUnit 5，
+                     结果是「一个测试都不跑，还报 BUILD SUCCESS」——最阴的坑。
+                     这里钉死 3.2.5，并统一测试进程编码，避免中文断言信息在 GBK 控制台乱码。 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.2.5</version>
+                    <configuration>
+                        <argLine>-Dfile.encoding=UTF-8</argLine>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
 </project>

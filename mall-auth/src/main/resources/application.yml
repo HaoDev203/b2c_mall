@@ -1,0 +1,10 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: mall-auth
+
+# ★ 本模块刻意不配置数据源 / Redis：
+#   测试不需要连真库，业务落库阶段再补，且届时测试必须指向内存库，
+#   绝不能指向 shop 的生产库 shop.db。
