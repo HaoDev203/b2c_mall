@@ -13,11 +13,11 @@
 |---|---|---|---|---|
 | B0 | 模块骨架 + DDL + 探针 + jacoco | 5 探针 | 5 / 5 | ✅ |
 | B1 | C 端商品列表 | 9 | 9 / 9 | ✅ |
-| B2 | 店铺 Dashboard | 23 | 0 / 23 | ⬜ |
+| B2 | 店铺 Dashboard | 23 | 23 / 23 | ✅ |
 | B3 | C 端订单管理 | 9 | 0 / 9 | ⬜ |
 | B4 | 店铺商品管理 | 23 | 0 / 23 | ⬜ |
 | B5 | 订单查询 | 24 | 0 / 24 | ⬜ |
-| | **合计** | **88** | **0 / 88** | |
+| | **合计** | **88** | **37 / 88** | |
 
 **全部 🔴 先红**（新模块从零，无既有代码可锁）。
 
@@ -82,44 +82,44 @@
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| D01 | `should_fail_without_querying_when_shop_id_is_absent` | shopId 为 null 时 `never()` 查库 | [ ] |
-| D02 | `should_return_six_status_card_keys` | **恰好** 6 个 key，不多不少 | [ ] |
-| D03 | `should_count_pending_pay_orders` | 桩值 `5L` | [ ] |
-| D04 | `should_count_pending_ship_orders` | 桩值 `12L`（需求示例数） | [ ] |
-| D05 | `should_count_pending_receive_orders` | 桩值 `2L` | [ ] |
-| D06 | `should_count_completed_orders` | 桩值 `24L`，状态映射要对 | [ ] |
-| D07 | `should_count_refund_and_after_sale_orders` | 桩值 `1L` | [ ] |
-| D08 | `should_count_stock_warning_products` | `stock <= stock_warn`，NULL 不预警 | [ ] |
-| D09 | `should_not_mix_other_shop_data` | 每次调用都是 `eq(SHOP_ID)` | [ ] |
+| D01 | `should_fail_without_querying_when_shop_id_is_absent` | shopId 为 null 时 `never()` 查库 | [x] |
+| D02 | `should_return_six_status_card_keys` | **恰好** 6 个 key，不多不少 | [x] |
+| D03 | `should_count_pending_pay_orders` | 桩值 `5L` | [x] |
+| D04 | `should_count_pending_ship_orders` | 桩值 `12L`（需求示例数） | [x] |
+| D05 | `should_count_pending_receive_orders` | 桩值 `2L` | [x] |
+| D06 | `should_count_completed_orders` | 桩值 `24L`，状态映射要对 | [x] |
+| D07 | `should_count_refund_and_after_sale_orders` | 桩值 `1L` | [x] |
+| D08 | `should_count_stock_warning_products` | `stock <= stock_warn`，NULL 不预警 | [x] |
+| D09 | `should_not_mix_other_shop_data` | 每次调用都是 `eq(SHOP_ID)` | [x] |
 
 ### 趋势图
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| D10 | `should_return_24_points_for_trend` | 两条曲线各 24 点 | [ ] |
-| D11 | `should_sum_today_paid_amount_by_hour` | 同小时多笔**累加**不是覆盖 | [ ] |
-| D12 | `should_sum_yesterday_paid_amount_by_hour` | 两次独立查询 | [ ] |
-| D13 | `should_fill_zero_for_hours_without_orders` | 补 `0` 不补 `null` | [ ] |
+| D10 | `should_return_24_points_for_trend` | 两条曲线各 24 点 | [x] |
+| D11 | `should_sum_today_paid_amount_by_hour` | 同小时多笔**累加**不是覆盖 | [x] |
+| D12 | `should_sum_yesterday_paid_amount_by_hour` | 两次独立查询 | [x] |
+| D13 | `should_fill_zero_for_hours_without_orders` | 补 `0` 不补 `null` | [x] |
 
 ### 经营指标
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| D14 | `should_count_distinct_paid_customers` ★ | `COUNT(DISTINCT user_id)`，桩数据订单数≠客户数 | [ ] |
-| D15 | `should_count_paid_orders` | `pay_time IS NOT NULL` 不用 status | [ ] |
-| D16 | `should_sum_refund_amount` | 无退款返回 `0.00` 不返回 null | [ ] |
-| D17 | `should_compute_average_order_value` | 总金额÷订单数，分母 0 返回 `0.00` | [ ] |
-| D18 | `should_compute_dod_as_percentage_change` | `(今日-昨日)/昨日×100`，下降为负 | [ ] |
-| D19 | `should_return_100_percent_dod_when_yesterday_is_zero` ★★ | **昨日为 0 → 恰好 100.00** | [ ] |
+| D14 | `should_count_distinct_paid_customers` ★ | `COUNT(DISTINCT user_id)`，桩数据订单数≠客户数 | [x] |
+| D15 | `should_count_paid_orders` | `pay_time IS NOT NULL` 不用 status | [x] |
+| D16 | `should_sum_refund_amount` | 无退款返回 `0.00` 不返回 null | [x] |
+| D17 | `should_compute_average_order_value` | 总金额÷订单数，分母 0 返回 `0.00` | [x] |
+| D18 | `should_compute_dod_as_percentage_change` | `(今日-昨日)/昨日×100`，下降为负 | [x] |
+| D19 | `should_return_100_percent_dod_when_yesterday_is_zero` ★★ | **昨日为 0 → 恰好 100.00** | [x] |
 
 ### 消息通知
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| D20 | `should_order_messages_by_time_desc` | SQL 里 `ORDER BY create_time DESC` | [ ] |
-| D21 | `should_attach_order_no_to_every_message` ★ | 每条都有 `orderNo` 非空 | [ ] |
-| D22 | `should_build_three_message_types_with_order_no_in_text` | 三类文案含单号 | [ ] |
-| D23 | `should_only_return_current_shop_messages` | 消息表隔离 | [ ] |
+| D20 | `should_order_messages_by_time_desc` | SQL 里 `ORDER BY create_time DESC` | [x] |
+| D21 | `should_attach_order_no_to_every_message` ★ | 每条都有 `orderNo` 非空 | [x] |
+| D22 | `should_build_three_message_types_with_order_no_in_text` | 三类文案含单号 | [x] |
+| D23 | `should_only_return_current_shop_messages` | 消息表隔离 | [x] |
 
 ---
 

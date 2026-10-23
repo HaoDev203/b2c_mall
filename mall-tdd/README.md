@@ -29,6 +29,22 @@ python -c "import sqlite3;c=sqlite3.connect('mall.db');c.executescript(open('sql
 DDL 全部 `IF NOT EXISTS`，可以反复执行。脚本位于 `sql/mall-ddl.sql`，
 字段依据 `.tdd/task/需求拆解-00-总览.md` §六。
 
+**建完库再灌演示数据**（B2 起需要真数据验证 SQL 语义）：
+
+```bash
+python -c "import sqlite3;c=sqlite3.connect('mall.db');c.executescript(open('sql/mall-demo-data.sql',encoding='utf-8').read());c.commit()"
+```
+
+数据用相对日期生成（今天 13 单 / 昨天 15 单 / 前天 10 单），**永远「今天/昨天」都有数据**，
+不会隔天失效。脚本开头会清空 6 张表再插，可重复执行。里面埋了四个靶子：
+
+| 靶子 | 目的 | 期望 |
+|---|---|---|
+| 分类「手机数码」两行不同 id | 验去重 | 导航只出 3 个名字 |
+| 电饭煲 `stock=10` 且 `stock_warn=10` | 验 `<=` 含等号 | 预警 3 件（不是 2 件） |
+| 限量球鞋 `stock_warn IS NULL` | 验 NULL 不预警 | 它不计入预警 |
+| 今天 9 单已支付 / 只有 7 个 `user_id` | 验 `COUNT(DISTINCT)` | 客户数 7 ≠ 订单数 9 |
+
 ## 跑测试
 
 ```bash
@@ -76,27 +92,37 @@ B0 是骨架批次，它的价值不是"跑通"，而是**证明测试真的在�
 
 **② Mock 测不出 SQL 语义。**
 `MallDbSchemaProbeTest` 是唯一连真库的测试，全程只读（`sqlite_master` / `PRAGMA`），
-不写数据。后面 O01（订单号精确匹配）、O11（时间区间）、C02（分类去重）这类
-「断言 SQL 语义」的条目，同样需要真 SQL 探针，不能只靠 Mockito。
+不写数据。B2 起出现了 `COUNT(DISTINCT user_id)`、`stock <= stock_warn`、
+`ORDER BY create_time DESC` 这类**只能靠真库验证**的语义，做法是用一次性探针
+（`dependency:build-classpath` + 独立 MyBatis `SqlSessionFactory` 直连 `mall.db`）
+跑一遍真实 SQL，把结果抄进提交说明，探针本身不入库。
+
+B2 实测结果：今天 9 单已支付 → `COUNT(DISTINCT)` 得 **7**（`COUNT(*)` 会得 9）；
+库存预警 **3** 件（含 `10<=10` 的等号边界，`stock_warn IS NULL` 的不算）；
+消息 3 条倒序 `18:00 → 09:15 → 昨天 13:00`；空日期 `SUM` 返回 **0.0** 而不是 null；
+干扰店金额 49995 分文未混入。
 
 ## 目录
 
 ```
 mall-tdd/
 ├── mall.db                本地库（不入库）
-├── sql/mall-ddl.sql       建表脚本（6 张表 + 6 个索引，需求全字段）
+├── sql/
+│   ├── mall-ddl.sql       建表脚本（6 张表 + 6 个索引，需求全字段）
+│   └── mall-demo-data.sql 演示数据（相对日期，可重复执行）
 └── src/
     ├── main/java/com/mall/tdd/
     │   ├── MallTddApplication.java
     │   ├── common/        LoginUser / UserContext / Result
-    │   ├── entity/        Product / Category
-    │   ├── dto/           MallProductVO
-    │   ├── mapper/        ProductMapper / CategoryMapper（注解 SQL）
-    │   └── service/       MallProductService / MallCategoryService
+    │   ├── entity/        Product / Category / Message
+    │   ├── dto/           MallProductVO / TrendVO / MetricVO / MetricsVO / MessageVO / HourAmount
+    │   ├── mapper/        ProductMapper / CategoryMapper / OrderMapper / MessageMapper（注解 SQL）
+    │   └── service/       MallProductService / MallCategoryService / DashboardService
     └── test/java/com/mall/tdd/
         ├── common/        UserContextProbeTest（2）
         ├── probe/         MallDbSchemaProbeTest（3）
-        └── service/       MallProductServiceTest（8）/ MallCategoryServiceTest（1）
+        └── service/       DashboardServiceTest（32）/ MallProductServiceTest（8）
+                           / MallCategoryServiceTest（1）
 ```
 
 ## 进度
@@ -105,11 +131,17 @@ mall-tdd/
 |---|---|---|
 | B0 骨架 + 探针 | 5 探针 | ✅ `Tests run: 5` |
 | B1 C 端商品列表 | 9 | ✅ `Tests run: 14` |
-| B2 店铺 Dashboard / B3 C 端订单 / B4 商品管理 / B5 订单查询 | 65 | ⬜ |
+| B2 店铺 Dashboard | 23 | ✅ `Tests run: 46` |
+| B3 C 端订单 / B4 商品管理 / B5 订单查询 | 56 | ⬜ |
 
 **B1 的变异验证**：删掉排序白名单、把 `putIfAbsent` 改成 `put` 后重跑，
 `Failures: 5, Errors: 1` —— C07（注入）与 C02（去重保留首条）都红在断言上。
 说明这 9 条不是「写完就算绿」的空壳测试。
 
-**Controller 暂缓**：9 条验收全在 Service 层，Controller 没有对应条目，
+**B2 的变异验证**：一次改坏 5 处（同比去掉昨日为 0 的分支、客户数改用订单数、
+趋势图不补 24 点、卡片多塞一个 `tradeFailed`、消息加内存排序），
+`Failures: 6, Errors: 2`，红的正好是 D02 / D10 / D11 / D12 / D13 / D14 / D19 / D20b，
+其余 24 条不受影响 —— 每条测试都咬在自己那个行为上。
+
+**Controller 暂缓**：验收全在 Service 层，Controller 没有对应条目，
 先写就是无人守护的代码。5 个页面的接口在 B5 之后一次性补齐。
