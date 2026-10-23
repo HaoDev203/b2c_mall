@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS tb_order (
   order_no          TEXT UNIQUE,    -- ★ 订单编号：后台查询要求精确匹配，不是 LIKE
   user_id           INTEGER,        -- ★ C 端隔离维度
   shop_id           INTEGER,        -- ★ 后台隔离维度
+  shop_name         TEXT,           -- ★ 店铺名称快照：订单卡片要展示店名，tb_order 只有 shop_id
+                                    --   下单时冗余写入（同 order_item.product_name 的思路）：
+                                    --   店铺后续改名不影响历史订单展示，也省掉每次查订单都 JOIN tb_shop
   total_amount      REAL,
   pay_amount        REAL,           -- 实付金额
   status            TEXT,           -- ★ 7 个状态：

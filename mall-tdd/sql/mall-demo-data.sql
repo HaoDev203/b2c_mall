@@ -235,6 +235,12 @@ INSERT INTO tb_order
 ('SO-X2-010', 2010, 2, 9999.00, 9999.00, 'REFUNDING',     datetime('now','localtime','start of day','-1 day','+13 hours'), datetime('now','localtime','start of day','-1 day','+13 hours')),
 ('SO-X2-011', 2011, 2, 9999.00, 9999.00, 'PENDING_PAY',   datetime('now','localtime','start of day','-2 day','+9 hours'),  NULL);
 
+-- 回填订单的店铺名称快照。
+-- 真实链路是下单时把 tb_shop.name 写进 tb_order.shop_name，这里用 UPDATE 模拟同样效果：
+-- 不改上面 38 行 VALUES（改动越多越容易列错位），也让新库跑完脚本就自带店名。
+UPDATE tb_order
+   SET shop_name = (SELECT name FROM tb_shop WHERE tb_shop.id = tb_order.shop_id);
+
 -- ============================================================
 -- ⑤ 订单明细（只给几张代表性的单，够验「共 N 件 = SUM(quantity)」）
 -- ============================================================
