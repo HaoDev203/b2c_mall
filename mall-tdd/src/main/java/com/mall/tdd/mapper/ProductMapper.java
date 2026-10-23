@@ -40,4 +40,25 @@ public interface ProductMapper {
      */
     @Select("SELECT * FROM tb_product WHERE id = #{id} AND status = 'on_sale'")
     Product selectByIdAndOnSale(@Param("id") Long id);
+
+    /**
+     * 库存预警商品数（Dashboard 的 stockWarning 卡片）。
+     *
+     * <p>★ 口径两条，都是有意为之：
+     * <ul>
+     *   <li>{@code stock <= stock_warn} <b>含等于</b>。需求原文写「低于阈值」，
+     *       但库存 3、阈值 3 按 {@code <} 算会漏掉刚好卡线的那批，按 {@code <=} 更符合
+     *       商家直觉（演示数据里的电饭煲 stock=10、阈值=10 就是为了钉这条）。</li>
+     *   <li>{@code stock_warn IS NULL} 的商品<b>有意不预警</b>。
+     *       不要加 {@code OR stock_warn IS NULL} —— 那会让所有没配预警线的商品
+     *       一上架就飘红，预警等于失效。</li>
+     * </ul>
+     *
+     * <p>不限 status：需求原文只说「库存低于阈值的商品数量」，没提只算在售商品。
+     */
+    @Select("SELECT COUNT(*) FROM tb_product "
+            + "WHERE shop_id = #{shopId} "
+            + "  AND stock_warn IS NOT NULL "
+            + "  AND stock <= stock_warn")
+    long countStockWarning(@Param("shopId") Long shopId);
 }
