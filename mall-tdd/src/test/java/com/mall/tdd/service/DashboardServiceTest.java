@@ -356,6 +356,35 @@ class DashboardServiceTest {
         }
     }
 
+    /**
+     * D13 补充 · Mapper 返回脏数据时不能崩。
+     *
+     * <p>SQL 里的 {@code CAST(strftime('%H', pay_time))} 已经保证小时落在 0~23，
+     * 但库不是只有程序能写（演示数据就是手插的）。这里锁两件事：
+     * 越界小时<b>忽略而不是抛数组越界</b>；金额为 null 按 0 处理；
+     * Mapper 万一带回 null 整个 List 也要能补齐 24 个 0。
+     */
+    @Test
+    @DisplayName("D13c Mapper 返回脏数据时不崩")
+    void should_ignore_dirty_rows_from_mapper() {
+        when(orderMapper.sumPaidAmountByHour(eq(SHOP_ID), eq(today)))
+                .thenReturn(Arrays.asList(
+                        hour(-1, 100.00),        // 越界，忽略
+                        hour(25, 200.00),        // 越界，忽略
+                        hour(8, 50.00),          // 正常
+                        hourWithoutAmount(7)));  // 金额为 null → 按 0
+        when(orderMapper.sumPaidAmountByHour(eq(SHOP_ID), eq(yesterday)))
+                .thenReturn(null);               // Mapper 意外返回 null
+
+        TrendVO vo = service.trend().getData();
+
+        assertEquals(HOURS_IN_DAY, vo.getToday().size(), "越界行不能把数组撑大");
+        assertEquals(50.00, vo.getToday().get(8).doubleValue(), 0.001, "合法小时照常落位");
+        assertEquals(0.00, vo.getToday().get(7).doubleValue(), 0.001, "金额 null 补 0，不能是 null");
+        assertEquals(HOURS_IN_DAY, vo.getYesterday().size(), "Mapper 返回 null 也要补齐 24 个 0");
+        assertEquals(0.00, vo.getYesterday().get(0).doubleValue(), 0.001);
+    }
+
     // ==========================================================
     // 功能点 3 · 四项核心经营指标（D14~D19）
     // ==========================================================
@@ -659,6 +688,14 @@ class DashboardServiceTest {
         HourAmount row = new HourAmount();
         row.setHour(Integer.valueOf(h));
         row.setAmount(Double.valueOf(amount));
+        return row;
+    }
+
+    /** 金额为 null 的行 —— 脏数据靶子 */
+    private HourAmount hourWithoutAmount(int h) {
+        HourAmount row = new HourAmount();
+        row.setHour(Integer.valueOf(h));
+        row.setAmount(null);
         return row;
     }
 
