@@ -12,7 +12,8 @@
         <module>gateway</module>
         <module>shop</module>
         <module>mall-auth</module>
-
+        <!-- 需求 v1.1 的 88 条验收：与 shop（设计模式作业）物理隔离，不引用、不共享库 -->
+        <module>mall-tdd</module>
     </modules>
 
     <properties>

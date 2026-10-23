@@ -1,0 +1,12 @@
+server:
+  port: 8082
+
+spring:
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    # ★ 独立库：不碰 shop/shop.db（那是设计模式作业的演示库）
+    url: jdbc:sqlite:D:/demo/commerce platform/mall-tdd/mall.db?foreign_keys=on
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
