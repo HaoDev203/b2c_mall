@@ -155,10 +155,9 @@ public class MallOrderService {
 
     private Map<Long, List<OrderItemVO>> groupItemsById(List<Long> orderIds) {
         Map<Long, List<OrderItemVO>> byOrder = new HashMap<Long, List<OrderItemVO>>();
+        // 不做 items == null 判断：MyBatis 的 List 返回值不会是 null，查不到就是空列表。
+        // 写了这个判断反而是一行永远跑不到、也没人验证的代码。
         List<OrderItem> items = orderMapper.selectItemsByOrderIds(orderIds);
-        if (items == null) {
-            return byOrder;
-        }
         for (OrderItem it : items) {
             List<OrderItemVO> list = byOrder.get(it.getOrderId());
             if (list == null) {

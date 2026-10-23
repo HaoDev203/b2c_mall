@@ -120,6 +120,24 @@ class MallOrderServiceTest {
         verifyNoInteractions(orderMapper);
     }
 
+    @Test
+    @DisplayName("U01c 分页参数规范化：size 封顶 50、缺省 10，page 缺省 1")
+    void should_cap_page_size_and_default_page() {
+        when(orderMapper.selectByUserPage(eq(USER_ID), any(), any(), anyInt(), anyInt()))
+                .thenReturn(Collections.<Order>emptyList());
+        stubTabCounts(null);
+        stubItems();
+
+        service.listOrders(null, null, null, 1000);
+
+        // ★ ?size=999999 不拦住就能把库拖垮（LIMIT 一百万）；page 缺省必须是 1，即 offset 0
+        verify(orderMapper).selectByUserPage(eq(USER_ID), isNull(), isNull(), eq(50), eq(0));
+
+        // 前端完全不传 size 时用默认 10，不能变成 LIMIT 0 查不出任何东西
+        service.listOrders(null, null, 1, null);
+        verify(orderMapper).selectByUserPage(eq(USER_ID), isNull(), isNull(), eq(10), eq(0));
+    }
+
     // ==========================================================
     // 功能点 2 · Tab 计数（U02）
     // ==========================================================
@@ -244,6 +262,29 @@ class MallOrderServiceTest {
     }
 
     @Test
+    @DisplayName("U05b 未登录时不能删除，且一个 SQL 都不发")
+    void should_reject_delete_when_not_logged_in() {
+        UserContext.clear();
+
+        Result<Void> result = service.deleteOrder(1L);
+
+        assertEquals(Integer.valueOf(401), result.getCode(), "未登录应返回 401");
+        // 发出去就是 WHERE id = 1 AND user_id = NULL → 影响 0 行 → 回「无权操作」，
+        // 用户会以为订单不归自己，而不是以为登录过期了
+        verifyNoInteractions(orderMapper);
+    }
+
+    @Test
+    @DisplayName("U05c orderId 为空时直接拒绝，不发 SQL")
+    void should_reject_delete_when_order_id_is_null() {
+        Result<Void> result = service.deleteOrder(null);
+
+        assertEquals(Integer.valueOf(500), result.getCode(), "id 为空应返回失败");
+        // WHERE id = NULL 影响 0 行，与「越权」无法区分，必须先拦住
+        verifyNoInteractions(orderMapper);
+    }
+
+    @Test
     @DisplayName("U06 买家删除后，后台查询仍能看到该订单")
     void should_keep_order_visible_in_admin_after_buyer_deletes() {
         // ★★ 这条锁的是 SQL 结构，不是返回值 —— Mock 根本没有 SQL，只能这样验。
@@ -352,6 +393,25 @@ class MallOrderServiceTest {
         assertEquals(Double.valueOf(99.00), vo.getPrice(), "售价");
         assertEquals(Integer.valueOf(stock), vo.getStock(), "库存");
         assertEquals("on_sale", vo.getStatus(), "状态");
+    }
+
+    @Test
+    @DisplayName("U09b 库存字段为 null 时同样不可购买")
+    void should_treat_null_stock_as_not_purchasable() {
+        Product p = new Product();
+        p.setId(Long.valueOf(5L));
+        p.setName("智能手机 Pro");
+        p.setPrice(Double.valueOf(99.00));
+        p.setStatus("on_sale");
+        p.setStock(null); // 库里的脏数据：库存没填
+        when(productMapper.selectByIdAndOnSale(5L)).thenReturn(p);
+
+        Result<BuyNowVO> result = service.buyNow(5L);
+
+        // ★ 不能因为 stock 是 null 就 NPE：拆箱 intValue() 会抛 NullPointerException，
+        //   页面直接 500。按「没库存」处理才是对的。
+        assertEquals(Integer.valueOf(500), result.getCode(), "stock 为 null 应视为不可购买");
+        assertNull(result.getData());
     }
 
     // ==========================================================
