@@ -45,6 +45,11 @@ python -c "import sqlite3;c=sqlite3.connect('mall.db');c.executescript(open('sql
 | 限量球鞋 `stock_warn IS NULL` | 验 NULL 不预警 | 它不计入预警 |
 | 今天 9 单已支付 / 只有 7 个 `user_id` | 验 `COUNT(DISTINCT)` | 客户数 7 ≠ 订单数 9 |
 
+> **旧库要补一列**：B3 起 `tb_order` 多了 `shop_name`（店铺名称快照，订单卡片要展示店名）。
+> 全新 clone 重建库时 DDL 已含该列，什么都不用做；但如果用的是这之前备份的库，需要：
+> `ALTER TABLE tb_order ADD COLUMN shop_name TEXT;` 再重跑 demo-data 脚本
+> （脚本末尾的 `UPDATE` 会从 `tb_shop` 回填）。不补的话 U04 与 B3 探针会红。
+
 ## 跑测试
 
 ```bash
@@ -114,15 +119,17 @@ mall-tdd/
     ├── main/java/com/mall/tdd/
     │   ├── MallTddApplication.java
     │   ├── common/        LoginUser / UserContext / Result
-    │   ├── entity/        Product / Category / Message
+    │   ├── entity/        Product / Category / Message / Order / OrderItem
     │   ├── dto/           MallProductVO / TrendVO / MetricVO / MetricsVO / MessageVO / HourAmount
+    │   │                  / OrderVO / OrderItemVO / OrderListVO / TabCountVO / BuyNowVO
     │   ├── mapper/        ProductMapper / CategoryMapper / OrderMapper / MessageMapper（注解 SQL）
     │   └── service/       MallProductService / MallCategoryService / DashboardService
+    │                      / MallOrderService
     └── test/java/com/mall/tdd/
         ├── common/        UserContextProbeTest（2）
         ├── probe/         MallDbSchemaProbeTest（3）
         └── service/       DashboardServiceTest（32）/ MallProductServiceTest（8）
-                           / MallCategoryServiceTest（1）
+                           / MallCategoryServiceTest（1）/ MallOrderServiceTest（16）
 ```
 
 ## 进度
@@ -132,7 +139,8 @@ mall-tdd/
 | B0 骨架 + 探针 | 5 探针 | ✅ `Tests run: 5` |
 | B1 C 端商品列表 | 9 | ✅ `Tests run: 14` |
 | B2 店铺 Dashboard | 23 | ✅ `Tests run: 46` |
-| B3 C 端订单 / B4 商品管理 / B5 订单查询 | 56 | ⬜ |
+| B3 C 端订单管理 | 9 | ✅ `Tests run: 63` |
+| B4 商品管理 / B5 订单查询 | 47 | ⬜ |
 
 **B1 的变异验证**：删掉排序白名单、把 `putIfAbsent` 改成 `put` 后重跑，
 `Failures: 5, Errors: 1` —— C07（注入）与 C02（去重保留首条）都红在断言上。
@@ -142,6 +150,33 @@ mall-tdd/
 趋势图不补 24 点、卡片多塞一个 `tradeFailed`、消息加内存排序），
 `Failures: 6, Errors: 2`，红的正好是 D02 / D10 / D11 / D12 / D13 / D14 / D19 / D20b，
 其余 24 条不受影响 —— 每条测试都咬在自己那个行为上。
+
+**B3 的变异验证抓到了一条空洞测试**（本次最有价值的一次）：
+一次改坏 5 处（「全部」改成 4 个 Tab 求和、影响 0 行也报成功、买家列表去掉 `is_deleted`、
+后台加上 `is_deleted`、库存 0 也允许购买），只红了 **4** 条：U02 / U06 / U07 / U09[2]。
+
+**U08 没红** —— 它断言「列表 2 条、total 2、不含订单 1」，但这三个数据全是 mock 造出来的，
+mock 给什么它就断言什么，跟 SQL 里有没有 `is_deleted = 0` 毫无关系。也就是说
+**U08 原本是个假绿测试**，删掉过滤条件它照样通过。
+修法是补上反射断言（读 `@Select` 注解原文，断言 SQL 含 `is_deleted = 0`）。
+补完再单独注入同一个变异，U08 与 U06 都准确变红。
+
+> 这条经验值得记：**「返回值断言」在纯 Mock 测试里可能完全无效**。
+> 凡是「SQL 里加了什么条件」这类语义，要么反射读注解，要么用真库探针，
+> 不能靠 mock 的返回值装作验证过了。
+
+B3 真库探针（在 `mall.db` 副本上跑，会写数据所以不碰真库）实测：
+
+| 验证项 | 结果 |
+|---|---|
+| 前缀 `SO-D0` 查订单号 | **0 条**（若是 `LIKE '%x%'` 会返回 10 条） |
+| 全号 `SO-D0-001` | 1 条 |
+| `user 1002` 全部 / 4 个 Tab 之和 | **4 / 3**，差的正是那 1 条退款中 |
+| 软删除影响行数 | 1 |
+| 买家总数 | 5 → 4 |
+| 买家列表仍含该订单 | false |
+| 后台列表含该订单 | **true → true**（删前删后都在） |
+| 别人（user 1002）去删它 | **0 行** |
 
 **Controller 暂缓**：验收全在 Service 层，Controller 没有对应条目，
 先写就是无人守护的代码。5 个页面的接口在 B5 之后一次性补齐。

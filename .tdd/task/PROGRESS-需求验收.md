@@ -14,12 +14,14 @@
 | B0 | 模块骨架 + DDL + 探针 + jacoco | 5 探针 | 5 / 5 | ✅ |
 | B1 | C 端商品列表 | 9 | 9 / 9 | ✅ |
 | B2 | 店铺 Dashboard | 23 | 23 / 23 | ✅ |
-| B3 | C 端订单管理 | 9 | 0 / 9 | ⬜ |
+| B3 | C 端订单管理 | 9 | 9 / 9 | ✅ |
 | B4 | 店铺商品管理 | 23 | 0 / 23 | ⬜ |
 | B5 | 订单查询 | 24 | 0 / 24 | ⬜ |
-| | **合计** | **88** | **37 / 88** | |
+| | **合计** | **88** | **41 / 88** | |
 
 **全部 🔴 先红**（新模块从零，无既有代码可锁）。
+
+> **合计口径**：88 = B1~B5 的需求条数（9+23+9+23+24），**不含 B0 的 5 个探针** —— 探针是环境验证，单独记在 B0 行（5/5 ✅）。
 
 ---
 
@@ -129,15 +131,15 @@
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| U01 | `should_only_return_current_user_orders` ★ | userId 只从 UserContext 取 | [ ] |
-| U02 | `should_return_count_per_status_tab` ★ | 「全部」= 各状态之和，桩值须不一致 | [ ] |
-| U03 | `should_search_by_order_no_exactly` ★ | 精确 `=`，前缀查 0 条（需真 SQL 验） | [ ] |
-| U04 | `should_return_all_order_card_fields` | 9 字段非空，含 `shopName` | [ ] |
-| U05 | `should_soft_delete_order_not_physically` ★★ | `never()` 物理删除 + 反射断言无 `delete*` | [ ] |
-| U06 | `should_keep_order_visible_in_admin_after_buyer_deletes` ★★ | 后台 `selectPage` **不带** `is_deleted` | [ ] |
-| U07 | `should_not_delete_other_users_order` | 越权影响 0 行 | [ ] |
-| U08 | `should_hide_deleted_orders_from_buyer_list` | 列表 + 总数同时过滤 | [ ] |
-| U09 | `should_return_buy_now_info_for_purchasable_product` | 已下架/无库存不可购买 | [ ] |
+| U01 | `should_only_return_current_user_orders` ★ | userId 只从 UserContext 取 | [x] |
+| U02 | `should_return_count_per_status_tab` ★ | 「全部」= **独立统计**（不是 4 个之和），桩值须不一致 | [x] |
+| U03 | `should_search_by_order_no_exactly` ★ | 精确 `=`，前缀查 0 条（需真 SQL 验） | [x] |
+| U04 | `should_return_all_order_card_fields` | 9 字段非空，含 `shopName` | [x] |
+| U05 | `should_soft_delete_order_not_physically` ★★ | `never()` 物理删除 + 反射断言无 `delete*` | [x] |
+| U06 | `should_keep_order_visible_in_admin_after_buyer_deletes` ★★ | 后台 `selectAdminPage` **不带** `is_deleted` | [x] |
+| U07 | `should_not_delete_other_users_order` | 越权影响 0 行 | [x] |
+| U08 | `should_hide_deleted_orders_from_buyer_list` | 列表 + 总数同时过滤 | [x] |
+| U09 | `should_return_buy_now_info_for_purchasable_product` | 已下架/无库存不可购买 | [x] |
 
 ---
 
