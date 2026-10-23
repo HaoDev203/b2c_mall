@@ -88,10 +88,28 @@ mall-tdd/
 └── src/
     ├── main/java/com/mall/tdd/
     │   ├── MallTddApplication.java
-    │   └── common/        LoginUser / UserContext
+    │   ├── common/        LoginUser / UserContext / Result
+    │   ├── entity/        Product / Category
+    │   ├── dto/           MallProductVO
+    │   ├── mapper/        ProductMapper / CategoryMapper（注解 SQL）
+    │   └── service/       MallProductService / MallCategoryService
     └── test/java/com/mall/tdd/
-        ├── common/        UserContextProbeTest
-        └── probe/         MallDbSchemaProbeTest
+        ├── common/        UserContextProbeTest（2）
+        ├── probe/         MallDbSchemaProbeTest（3）
+        └── service/       MallProductServiceTest（8）/ MallCategoryServiceTest（1）
 ```
 
-后续按 `.tdd/task/PROGRESS-需求验收.md` 逐批推进：B1（9 条）→ B2（23）→ B3（9）→ B4（23）→ B5（24）。
+## 进度
+
+| 批次 | 条数 | 状态 |
+|---|---|---|
+| B0 骨架 + 探针 | 5 探针 | ✅ `Tests run: 5` |
+| B1 C 端商品列表 | 9 | ✅ `Tests run: 14` |
+| B2 店铺 Dashboard / B3 C 端订单 / B4 商品管理 / B5 订单查询 | 65 | ⬜ |
+
+**B1 的变异验证**：删掉排序白名单、把 `putIfAbsent` 改成 `put` 后重跑，
+`Failures: 5, Errors: 1` —— C07（注入）与 C02（去重保留首条）都红在断言上。
+说明这 9 条不是「写完就算绿」的空壳测试。
+
+**Controller 暂缓**：9 条验收全在 Service 层，Controller 没有对应条目，
+先写就是无人守护的代码。5 个页面的接口在 B5 之后一次性补齐。
