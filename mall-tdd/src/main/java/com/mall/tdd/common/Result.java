@@ -27,4 +27,12 @@ public class Result<T> {
         r.setMsg(msg);
         return r;
     }
+
+    /** 未登录 / 登录态失效。与「业务失败 500」分开，前端据此跳登录页而不是弹错误提示 */
+    public static <T> Result<T> unauthorized(String msg) {
+        Result<T> r = new Result<T>();
+        r.setCode(401);
+        r.setMsg(msg);
+        return r;
+    }
 }

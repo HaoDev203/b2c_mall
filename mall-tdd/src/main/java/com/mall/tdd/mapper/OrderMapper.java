@@ -1,9 +1,12 @@
 package com.mall.tdd.mapper;
 
 import com.mall.tdd.dto.HourAmount;
+import com.mall.tdd.entity.Order;
+import com.mall.tdd.entity.OrderItem;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -74,4 +77,73 @@ public interface OrderMapper {
             + "  AND status = 'REFUNDING' "
             + "  AND create_time >= #{date} AND create_time < date(#{date}, '+1 day')")
     Double sumRefundAmount(@Param("shopId") Long shopId, @Param("date") String date);
+
+    // ==========================================================
+    // C 端买家侧（按 user_id 隔离）
+    //
+    // ★ 三个方法都带 is_deleted = 0：买家删除 = 仅隐藏。
+    // ★ 订单号用 = 而不是 LIKE：需求原文专门强调「精确检索」。
+    // ==========================================================
+
+    @Select("<script>"
+            + "SELECT * FROM tb_order WHERE user_id = #{userId} AND is_deleted = 0 "
+            + "<if test='status != null'>AND status = #{status} </if>"
+            + "<if test='orderNo != null'>AND order_no = #{orderNo} </if>"
+            + "ORDER BY create_time DESC, id DESC LIMIT #{limit} OFFSET #{offset}"
+            + "</script>")
+    List<Order> selectByUserPage(@Param("userId") Long userId,
+                                 @Param("status") String status,
+                                 @Param("orderNo") String orderNo,
+                                 @Param("limit") int limit,
+                                 @Param("offset") int offset);
+
+    /**
+     * 买家侧订单总数。
+     *
+     * <p>★ 必须与 {@link #selectByUserPage} 用完全相同的过滤条件，
+     * 否则出现「列表只有 2 条，却显示共 3 条」的分页错乱。
+     */
+    @Select("<script>"
+            + "SELECT COUNT(*) FROM tb_order WHERE user_id = #{userId} AND is_deleted = 0 "
+            + "<if test='status != null'>AND status = #{status} </if>"
+            + "<if test='orderNo != null'>AND order_no = #{orderNo} </if>"
+            + "</script>")
+    long countByUser(@Param("userId") Long userId,
+                     @Param("status") String status,
+                     @Param("orderNo") String orderNo);
+
+    /**
+     * 买家删除订单 —— <b>只置位，不删行</b>。需求原文：「仅隐藏，后台保留订单数据」。
+     *
+     * <p>★ {@code AND user_id = #{userId}} 就是越权防线：条件写在 SQL 的 WHERE 里，
+     * 别人的订单影响行数天然为 0，不需要「先查再判」（那样有 TOCTOU 窗口还多一次查询）。
+     *
+     * <p>★ 这个接口上<b>不允许出现任何以 delete 开头的方法</b>，有测试用反射守着。
+     */
+    @Update("UPDATE tb_order SET is_deleted = 1 WHERE id = #{orderId} AND user_id = #{userId}")
+    int softDeleteByIdAndUser(@Param("orderId") Long orderId, @Param("userId") Long userId);
+
+    /**
+     * 后台订单列表（按 shop_id 隔离）。
+     *
+     * <p>★★ <b>刻意不带 is_deleted 条件</b>。买家删掉只是从自己眼前隐藏，
+     * 商家必须仍然看得到 —— 被买家删掉的往往正是有问题的订单，客诉时就要靠它。
+     * 不要为了「和买家侧统一」在这里加 {@code AND is_deleted = 0}。
+     */
+    @Select("SELECT * FROM tb_order WHERE shop_id = #{shopId} "
+            + "ORDER BY create_time DESC, id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<Order> selectAdminPage(@Param("shopId") Long shopId,
+                                @Param("limit") int limit,
+                                @Param("offset") int offset);
+
+    /**
+     * 批量取订单明细。
+     *
+     * <p>一次 IN 查询代替每条订单查一次：10 条订单的列表页如果逐条查就是 11 次往返。
+     */
+    @Select("<script>"
+            + "SELECT * FROM tb_order_item WHERE order_id IN "
+            + "<foreach collection='orderIds' item='oid' open='(' separator=',' close=')'>#{oid}</foreach>"
+            + "</script>")
+    List<OrderItem> selectItemsByOrderIds(@Param("orderIds") List<Long> orderIds);
 }
