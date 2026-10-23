@@ -1,89 +1,97 @@
-# .tdd — 登录功能 TDD 练习材料
+# .tdd — TDD 实施材料
 
-这个目录装着 `mall-auth` 模块**登录功能**的 TDD 实施材料：先做任务拆解，再按批次逐个走「红 → 绿 → 重构」。
+本目录有**两条独立线**，别混着看：
 
-## 文档地图（4 份主文档 + 2 份逐条详解）
+| 线 | 对应模块 | 状态 | 文档 |
+|---|---|---|---|
+| **A 线：需求验收**（当前主线） | 待建 `mall-tdd` | 拆解完成，待确认后开工 | 本文件下半部分 |
+| B 线：登录功能练习 | `mall-auth` | 暂停（需求文档里没有登录功能） | 本文件末尾「归档区」 |
 
-| 文档 | 回答的问题 | 什么时候看 |
-|---|---|---|
-| [`task/登录功能-任务拆解.md`](task/登录功能-任务拆解.md) | **要建什么** —— 6 个功能点 / 23 个功能上下文 / **87 个任务项**，每条都带「测试思路」 | 想知道需求被拆成了哪些可测的条目 |
-| [`执行清单.md`](执行清单.md) | **下一步做什么** —— 把 87 项归并成 **22 个批次**，每批给出：新建哪些文件、测试方法名、断言要点、卡点、提交信息 | **动手时就看这份** |
-| [`task/PROGRESS.md`](task/PROGRESS.md) | **做到哪了** —— 87 项打勾表，按里程碑 M1~M6 分组 | 每完成一个批次来打勾 |
-| [`TDD-实操手册.md`](TDD-实操手册.md) | **为什么这么做** —— 命令速查、Java 里"红"的三种形态、断言翻译表、领域层 8 条纪律、坑清单、决策树 | 概念卡住时查 |
+---
 
-**逐条详解（新手必看）**：
+# 主线 · 需求验收（《项目需求v.1.1》→ 88 条）
 
-| 详解 | 覆盖批次 | 里面有什么 |
-|---|---|---|
-| [`B1.1-Username-详解.md`](B1.1-Username-详解.md) | B1.1 `Username` | 10 条用例逐条展开；`assertThatThrownBy` 拆解；缩进阶梯表；**手工变异测试**；卡住对照表 |
-| [`B1.2-B1.3-密码值对象-详解.md`](B1.2-B1.3-密码值对象-详解.md) | B1.2 `RawPassword` + B1.3 `PasswordHash` | 密码领域**不能照抄 Username 的三处**；★ **一条会永久假绿的 `toString` 测试**（带实测证据）；空壳实现下的"天生绿"清单；6 组变异实验实测表 |
+## 文档地图
 
-**第一次做 TDD 从 `B1.1-Username-详解.md` 开始**，走完 B1.1 再进 B1.2/B1.3。
+| 文档 | 回答的问题 |
+|---|---|
+| [`需求拆解与TDD实现计划.md`](需求拆解与TDD实现计划.md) | **怎么走** —— 批次顺序、每批 5 步流程、**答辩演示脚本**、风险与应对 |
+| [`task/需求拆解-00-总览.md`](task/需求拆解-00-总览.md) | **全局约定** —— 索引、接口契约、数据口径、表字段、不可测清单 |
+| [`task/需求拆解-01-C端商品列表.md`](task/需求拆解-01-C端商品列表.md) | B1，9 条 |
+| [`task/需求拆解-02-店铺Dashboard.md`](task/需求拆解-02-店铺Dashboard.md) | B2，23 条 |
+| [`task/需求拆解-03-C端订单管理.md`](task/需求拆解-03-C端订单管理.md) | B3，9 条 |
+| [`task/需求拆解-04-店铺商品管理.md`](task/需求拆解-04-店铺商品管理.md) | B4，23 条 |
+| [`task/需求拆解-05-订单查询.md`](task/需求拆解-05-订单查询.md) | B5，24 条 |
+| [`task/PROGRESS-需求验收.md`](task/PROGRESS-需求验收.md) | **做到哪了** —— 88 条打勾表 + 5 个会卡住的坑 |
 
-## 建议阅读顺序
+**每条任务项都带三样东西**：可测行为、**测试方法名**、**「红在哪」**（跑红时用来核对是否红在预期位置）。
+红的位置不对 = 测试写错了 → 改测试，不改实现。
+
+## 阅读顺序
 
 ```
 1. 本文件（了解有什么）
-2. B1.1-Username-详解.md  ← 先跑通一个完整循环，建立节奏感
-3. B1.2-B1.3-密码值对象-详解.md  ← 密码领域的三处"反着来"
-4. 执行清单.md 的「第 0 步」+「批次总览表」
-5. 边做边查：手册（概念）→ 拆解（某条任务项的细节）
+2. task/需求拆解-00-总览.md      ← 先看数据口径与不可测清单，避免后面反复踩
+3. 需求拆解与TDD实现计划.md      ← 看批次顺序与答辩脚本
+4. task/需求拆解-01（B1，最短一批）← 走通一个完整循环，建立节奏
+5. 边做边打勾：task/PROGRESS-需求验收.md
 ```
 
-## 推进路线
+## 进度
 
-**不要按任务项编号 1→87 顺序做。** 真实路线是按层从内到外（共 22 个批次）：
+`0 / 88`，全部 🔴 先红（新模块从零，没有既有代码可以锁）。
 
-```
-M1 值对象(5批) → M2 聚合根+事件(2批) → M3 应用编排(7批)
-→ M4 infrastructure(4批) → M5 web(1批) → M6 观察者(3批)
-```
+| 批次 | 页面 | 条数 | 状态 |
+|---|---|---|---|
+| B0 | 模块骨架 + DDL + 探针 + jacoco | 1 | ⬜ |
+| B1 | C 端商品列表 | 9 | ⬜ |
+| B2 | 店铺 Dashboard | 23 | ⬜ |
+| B3 | C 端订单管理 | 9 | ⬜ |
+| B4 | 店铺商品管理 | 23 | ⬜ |
+| B5 | 订单查询 | 24 | ⬜ |
 
-M1 全是不依赖任何框架的纯 Java，一个用例几十毫秒 —— 先在手感上建立"快速反馈"，
-数据库和 HTTP 放到最后。
-
-## 当前进度
-
-| 里程碑 | 内容 | 状态 |
-|---|---|---|
-| M1 | 值对象（`Username` / `RawPassword` / `PasswordHash` / `Token`） | 🔄 进行中：B1.1 `Username` 收尾（缺 `should_work_as_map_key`）；**B1.2 / B1.3 详解已就绪，可开工** |
-| M2 ~ M6 | 聚合根、应用编排、基础设施、web、观察者 | ⬜ 未开始 |
-
-详见 [`task/PROGRESS.md`](task/PROGRESS.md)。
-
-## 配套的代码在哪
-
-```
-mall-auth/src/main/java/com/mall/auth/
-├── domain/          领域模型与规则（纯 Java，零 Spring / 零 MyBatis）
-│   ├── model/       ← 值对象、聚合根        【TDD 主战场】
-│   ├── port/        出站端口接口
-│   ├── event/       领域事件
-│   └── exception/   领域异常
-├── application/     用例编排
-├── infrastructure/  端口的实现（BCrypt / MyBatis / TokenStore）
-└── adapter/         web 与事件监听器
-
-mall-auth/src/test/java/com/mall/auth/      ← 与上面镜像的结构
-```
-
-## 怎么跑测试
+## 怎么跑测试（B0 建好后）
 
 ```bash
 export JAVA_HOME=/d/jdk17
 cd "/d/demo/commerce platform"
 
-# 全模块
-/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-auth test
+# 整批
+/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-tdd test
 
 # 只跑一个类 / 一个方法
-/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-auth test -Dtest=UsernameTest
-/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-auth test -Dtest=UsernameTest#should_reject_when_username_is_null
+/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-tdd test -Dtest=MallProductServiceTest
+/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-tdd test -Dtest=MallProductServiceTest#should_only_return_on_sale_products
+
+# 看编译错误（中文会乱码，强制英文）
+/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-tdd test -Duser.language=en -Duser.country=US
+
+# 覆盖率
+/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-tdd test jacoco:report
+# → mall-tdd/target/site/jacoco/index.html
 ```
 
-> 中文断言信息在 Windows GBK 控制台会乱码（只是显示问题）。
-> 要看干净输出就读 `mall-auth/target/surefire-reports/com.mall.auth.*.txt`，那是 UTF-8 的。
+---
 
-## 归档
+# 归档区 · 登录功能练习（B 线）
 
-`task/archive/` 里是更早一版「注册功能」的任务拆解 —— 需求后来改成了登录，**仅留档，不参考**。
+> **需求文档里没有登录功能。** 「登录」在原文出现 5 次，全是「登录商家账号才可访问」这类**权限前置条件**，不是功能需求。
+> 这条线是有价值的架构练习（值对象、聚合根、领域事件、观察者），但**不是本次交付物**，暂停。
+
+| 文档 | 内容 |
+|---|---|
+| [`task/登录功能-任务拆解.md`](task/登录功能-任务拆解.md) | 87 项任务，6 功能点 / 23 功能上下文 |
+| [`执行清单.md`](执行清单.md) | 87 项归并成 22 个批次 |
+| [`task/PROGRESS.md`](task/PROGRESS.md) | 87 项打勾表（停在 `0 / 87`，**未动**） |
+| [`TDD-实操手册.md`](TDD-实操手册.md) | 方法论：命令速查、红的三种形态、断言翻译表、坑清单 |
+| [`B1.1-Username-详解.md`](B1.1-Username-详解.md) | 值对象逐条展开、手工变异测试 |
+| [`B1.2-B1.3-密码值对象-详解.md`](B1.2-B1.3-密码值对象-详解.md) | 密码领域的三处「反着来」、一条会永久假绿的 `toString` 测试 |
+| [`task/archive/注册功能-任务拆解.md`](task/archive/注册功能-任务拆解.md) | 更早一版，仅留档 |
+
+**方法论那两份（`TDD-实操手册.md`）主线也能用** —— 里面的「红的三种形态」「断言翻译表」对 88 条一样适用，只是代码落点从 `mall-auth` 换成了 `mall-tdd`。
+
+跑这条线的测试：
+```bash
+/d/maven/apache-maven-4.0.0-rc-5/bin/mvn -B -pl mall-auth test
+# → Tests run: 16, Failures: 0
+```
