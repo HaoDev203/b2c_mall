@@ -53,7 +53,17 @@ B0 是骨架批次，它的价值不是"跑通"，而是**证明测试真的在�
 | 4 | 写 `UserContextProbeTest` 2 条 | `COMPILATION ERROR`<br>`找不到符号 类 UserContext` | 红在「类还不存在」，这才是真红 |
 | 5 | 写 `LoginUser` + `UserContext` | `Tests run: 5, Failures: 0`<br>`Loading execution data file ... jacoco.exec` | 全绿 + 覆盖率生效 |
 
-对应 5 个 commit（`git log` 可查），**test commit 永远早于 feat commit**。
+对应 6 个 commit（5 个 TDD 步骤 + 1 个 docs），**test commit 永远早于 feat commit**。
+
+> **一个诚实的说明（答辩前必看）**
+>
+> 第 2 步的「库结构探针红」只能在**库还不存在**时复现：`mall.db` 被 `.gitignore` 忽略，
+> 它属于环境而不是代码。本地已经有库时，`git checkout b11bf89` 再跑反而是绿的。
+> 要复现就把库临时挪开：`mv mall.db mall.db.keep`，跑完 `mv` 回来。
+>
+> 第 4 步的「UserContext 编译红」**与库无关，任何环境都能复现**（实测过：
+> checkout 到 `e3c97e4`，`common/` 目录为空，`mvn -pl mall-tdd test` 直接
+> `COMPILATION ERROR` + `BUILD FAILURE`）。**答辩演示用这一步，不要用库探针。**
 
 ## 两个已踩过的坑
 
