@@ -16,8 +16,8 @@
 | B2 | 店铺 Dashboard | 23 | 23 / 23 | ✅ |
 | B3 | C 端订单管理 | 9 | 9 / 9 | ✅ |
 | B4 | 店铺商品管理 | 23 | 21 / 23 | 🟡 P22/P23 待做 |
-| B5 | 订单查询 | 24 | 0 / 24 | ⬜ |
-| | **合计** | **88** | **62 / 88** | |
+| B5 | 订单查询 | 24 | 23 / 24 | 🟡 O24 待做 |
+| | **合计** | **88** | **85 / 88** | |
 
 **全部 🔴 先红**（新模块从零，无既有代码可锁）。
 
@@ -205,54 +205,55 @@
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| O01 | `should_search_by_order_no_exactly` ★★ | 精确 `=`，前缀查 0 条（需真 SQL 验） | [ ] |
-| O02 | `should_filter_by_order_type` | `order_type` 列 | [ ] |
-| O03 | `should_filter_by_order_category` | `order_category` 列（≠ 类型） | [ ] |
-| O04 | `should_filter_by_status_including_group_pending` ★ | 状态枚举含「待成团」，共 7 个 | [ ] |
-| O05 | `should_search_by_receiver_name_fuzzy` | 模糊（与 O01 相反） | [ ] |
-| O06 | `should_search_by_receiver_phone_fuzzy` | 模糊（一期末是精确） | [ ] |
-| O07 | `should_filter_by_pay_type` | 英文枚举存库 | [ ] |
-| O08 | `should_filter_by_after_sale_status` | 「暂无售后」映射 `IS NULL` | [ ] |
-| O09 | `should_filter_by_logistics_type` | 物流类型 ≠ 配送方式 | [ ] |
-| O10 | `should_filter_by_store_name` | 精确 | [ ] |
-| O11 | `should_filter_by_create_time_range` | **闭区间**，`date(create_time)` 截断 | [ ] |
+| O01 | `should_search_by_order_no_exactly` ★★ | 精确 `=`，前缀查 0 条（需真 SQL 验） | [x] |
+| O02 | `should_filter_by_order_type` | `order_type` 列 | [x] |
+| O03 | `should_filter_by_order_category` | `order_category` 列（≠ 类型） | [x] |
+| O04 | `should_filter_by_status_including_group_pending` ★ | 状态枚举含「待成团」，共 7 个 | [x] |
+| O05 | `should_search_by_receiver_name_fuzzy` | 模糊（与 O01 相反） | [x] |
+| O06 | `should_search_by_receiver_phone_fuzzy` | 模糊（一期末是精确） | [x] |
+| O07 | `should_filter_by_pay_type` | 英文枚举存库 | [x] |
+| O08 | `should_filter_by_after_sale_status` | 「暂无售后」映射 `IS NULL` | [x] |
+| O09 | `should_filter_by_logistics_type` | 物流类型 ≠ 配送方式 | [x] |
+| O10 | `should_filter_by_store_name` | 精确 | [x] |
+| O11 | `should_filter_by_create_time_range` | **闭区间**，`< date(end,'+1 day')`，不在列上套函数 | [x] |
 
 ### 快捷时间与组合
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| O12 | `should_resolve_quick_date_range` | 今日/昨日/近7/近30，注入固定 `Clock` | [ ] |
-| O13 | `should_apply_all_filters_together` | 11 参数一次调用全在 | [ ] |
+| O12 | `should_resolve_quick_date_range` | 今日/昨日/近7/近30，注入固定 `Clock` | [x] |
+| O13 | `should_apply_all_filters_together` | 11 参数一次调用全在 | [x] |
 
 ### 状态标签栏
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| O14 | `should_return_count_for_seven_tabs` ★ | 7 Tab，`all` = 6 状态之和 | [ ] |
+| O14 | `should_return_count_for_seven_tabs` ★ | 7 Tab，`all` = 独立 `COUNT(*)`（求和会漏 REFUNDING） | [x] |
 
 ### 每行展示
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| O15 | `should_compute_total_quantity_from_order_items` ★ | N = 数量之和，不是行数 | [ ] |
-| O16 | `should_mask_receiver_phone` ★ | `138****8000`，后端脱敏 | [ ] |
-| O17 | `should_return_status_tags` | 5 种标签，可多值 | [ ] |
+| O15 | `should_compute_total_quantity_from_order_items` ★ | N = 数量之和，不是行数 | [x] |
+| O16 | `should_mask_receiver_phone` ★ | `138****8000`，后端脱敏 | [x] |
+| O17 | `should_return_status_tags` | 5 种标签，可多值 | [x] |
 
 ### 发货
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| O18 | `should_write_tracking_no_when_shipping` ★ | **先流转状态再写单号** | [ ] |
-| O19 | `should_reject_ship_when_status_is_not_pending_ship` | 6 个非待发货状态全拒 | [ ] |
-| O20 | `should_batch_ship_each_order_independently` | 逐条独立 | [ ] |
-| O21 | `should_report_partial_failure_without_rollback` | results 顺序与入参一致 | [ ] |
+| O18 | `should_write_tracking_no_when_shipping` ★ | **一条 UPDATE 同时写状态与单号**，不留中间态 | [x] |
+| O19 | `should_reject_ship_when_status_is_not_pending_ship` | 6 个非待发货状态全拒 | [x] |
+| O20 | `should_batch_ship_each_order_independently` | 逐条独立 | [x] |
+| O21 | `should_report_partial_failure_without_rollback` | results 顺序与入参一致 | [x] |
 
 ### 数据隔离与导出
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| O22 | `should_not_return_other_shops_orders` | 所有分支都带 `shop_id` | [ ] |
-| O23 | `should_reject_ship_and_detail_of_other_shop_order` | 越权返回失败，不写状态日志 | [ ] |
+| O22 | `should_not_return_other_shops_orders` | 所有分支都带 `shop_id` | [x] |
+| O22b | `should_cover_shop_isolation_in_every_sql` | 7 个带 shopId 的方法逐个断言隔离（变异验证逼出来的） | [x] |
+| O23 | `should_reject_ship_and_detail_of_other_shop_order` | 越权返回失败，不发任何 UPDATE | [x] |
 | O24 | `should_export_current_filtered_orders` | 行数=筛选结果，手机号仍脱敏 | [ ] |
 
 ---
