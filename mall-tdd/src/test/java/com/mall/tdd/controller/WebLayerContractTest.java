@@ -37,6 +37,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -170,7 +171,7 @@ class WebLayerContractTest {
         when(mallOrderService.listOrders(any(), any(), any(), any()))
                 .thenReturn(Result.<OrderListVO>unauthorized("请先登录"));
 
-        String body = call("GET", "/api/mall/order/list").getResponse().getContentAsString();
+        String body = call("GET", "/api/mall/order/list").getResponse().getContentAsString(StandardCharsets.UTF_8);
 
         assertTrue(body.contains("\"code\":401"), "未登录必须原样透传 401，实际：" + body);
     }
@@ -308,10 +309,12 @@ class WebLayerContractTest {
 
         assertNull(r.getResponse().getHeader("Content-Disposition"),
                 "失败时不能带下载头，否则浏览器会存下一个错误页");
-        String body = r.getResponse().getContentAsString();
+        String body = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertTrue(body.contains("\"code\":500"), "失败要返回 Result 形状，实际：" + body);
         assertTrue(body.contains("没有符合条件的商品"), "错误原因要带给前端，实际：" + body);
-        assertEquals(0, r.getResponse().getContentAsByteArray().length, "失败时不该写文件内容");
+        String contentType = r.getResponse().getContentType();
+        assertTrue(contentType != null && contentType.contains("json"),
+                "失败时要走 JSON 通道，不能是 xlsx 类型（否则浏览器会存下错误页），实际：" + contentType);
     }
 
     @Test
@@ -366,7 +369,7 @@ class WebLayerContractTest {
 
         String body = mvc.perform(multipart("/api/shop/product/import").file(empty)
                         .header(SHOP_HEADER, "1"))
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
 
         assertTrue(body.contains("\"code\":500") || body.contains("\"code\":400"),
                 "没传文件要给业务提示，实际：" + body);
@@ -449,7 +452,7 @@ class WebLayerContractTest {
         when(productService.detail(anyLong()))
                 .thenThrow(new RuntimeException("SELECT * FROM tb_product 炸了"));
 
-        String body = call("GET", "/api/mall/product/1").getResponse().getContentAsString();
+        String body = call("GET", "/api/mall/product/1").getResponse().getContentAsString(StandardCharsets.UTF_8);
 
         assertTrue(body.contains("\"code\":500"), "必须是 Result 形状，实际：" + body);
         assertFalse(body.contains("SELECT *"), "不许把 SQL 原文回给调用方，实际：" + body);
@@ -513,8 +516,14 @@ class WebLayerContractTest {
     @DisplayName("W12 未知路径保持 404，不被兜底吞掉")
     void should_keep_unknown_path_404() throws Exception {
         stubAllOk();
-        assertEquals(404, call("GET", "/api/not-exists").getResponse().getStatus());
-        assertEquals(404, call("GET", "/api/shop/product/listX").getResponse().getStatus());
+        // 路径完全不存在 → 404
+        assertEquals(404, call("GET", "/api/not-exists").getResponse().getStatus(),
+                "未知路径必须 404，不能被兜底吞成 200");
+
+        // 路径存在但 HTTP 方法不匹配（/api/shop/product/{id} 只接受 DELETE）→ 405
+        int methodMismatch = call("GET", "/api/shop/product/listX").getResponse().getStatus();
+        assertEquals(405, methodMismatch,
+                "路径存在但方法不支持时必须是 405；被兜底吞成 200 的话，前端会以为「接口正常但没数据」");
     }
 
     // ==========================================================
