@@ -2,6 +2,7 @@ package com.mall.tdd.service;
 
 import com.mall.tdd.common.Result;
 import com.mall.tdd.common.UserContext;
+import com.mall.tdd.common.XlsxWriter;
 import com.mall.tdd.dto.AdminOrderPageVO;
 import com.mall.tdd.dto.AdminOrderQuery;
 import com.mall.tdd.dto.AdminOrderVO;
@@ -63,6 +64,20 @@ public class OrderQueryService {
     /** 售后状态「申请中」的取值，同时也是标签 REFUND_APPLYING 的触发条件 */
     private static final String AFTER_SALE_APPLYING = "applying";
 
+    /**
+     * 导出上限（同 P22 的口径）：导出必须忽略分页，但也不能真的无限。
+     *
+     * <p>★ 只导当前页 10 条是这类功能最经典的 bug；真的 {@code LIMIT} 无限
+     * 又会在大商家身上打爆内存。全量导出应该走异步任务，那是另一条需求。
+     */
+    public static final int EXPORT_MAX_ROWS = 10000;
+
+    /** 导出列顺序即文件列序；联系电话取的是<b>脱敏值</b>，原号码不进文件 */
+    private static final List<String> EXPORT_HEADERS = Collections.unmodifiableList(
+            Arrays.asList("订单编号", "店铺名称", "商品件数", "实付金额", "收货人", "联系电话",
+                    "收货地址", "订单状态", "支付方式", "订单类型", "订单类别", "物流类型",
+                    "门店名称", "物流单号", "售后状态", "下单时间"));
+
     private final AdminOrderMapper adminOrderMapper;
     private final OrderMapper orderMapper;
     /** 注入而不是直接 {@code LocalDate.now()}：否则 O12 的 4 组断言会随运行日期漂移 */
@@ -85,11 +100,9 @@ public class OrderQueryService {
             return Result.unauthorized("请先登录");
         }
 
-        String quick = trimToNull(query == null ? null : query.getQuickDate());
-        if (quick != null && !QUICK_OPTIONS.contains(quick)) {
-            // ★ 不静默当成「不筛」：那样用户以为筛了近 90 天，实际看到的是全表，
-            //   和 P04b（非法状态被忽略）是同一类错误。
-            return Result.fail("不支持的快捷时间：" + quick);
+        String quickError = validateQuick(query);
+        if (quickError != null) {
+            return Result.fail(quickError);
         }
 
         AdminOrderQuery q = normalize(query, LocalDate.now(clock));
@@ -130,6 +143,63 @@ public class OrderQueryService {
         vo.setItems(toItemVOs(items));
         vo.setTotalQuantity(sumQuantity(items));
         return Result.ok(vo);
+    }
+
+    // ==================================================================
+    // 导出（O24）
+    // ==================================================================
+
+    /**
+     * 导出<b>当前筛选后</b>的订单列表（O24）。
+     *
+     * <p>★★ 两处最容易漏，而且漏了都很严重：
+     * <ol>
+     *   <li><b>「当前筛选后」</b> —— 导出全表是这类功能最经典的 bug。
+     *       商家筛出 4 单待发货去催发货，拿到 12 单，然后照着表打电话给已经收货的客户。</li>
+     *   <li><b>手机号必须脱敏</b> —— 列表页遮了、导出文件却是全员原号码，
+     *       这个文件一旦发到群里就是批量泄露，而且是<b>一次性把整店客户名单交出去</b>。
+     *       所以这里复用的就是列表的 {@link #toVOs}，脱敏在 {@code toVO} 里，
+     *       导出<b>没有另写一套字段映射</b>。</li>
+     * </ol>
+     *
+     * <p>★ 分页同样换成 {@code (EXPORT_MAX_ROWS, 0)}：导的是筛选结果全集。
+     */
+    public Result<byte[]> exportOrders(AdminOrderQuery query) {
+        Long shopId = UserContext.getShopId();
+        if (shopId == null) {
+            return Result.unauthorized("请先登录");
+        }
+        String quickError = validateQuick(query);
+        if (quickError != null) {
+            return Result.fail(quickError);
+        }
+
+        AdminOrderQuery q = normalize(query, LocalDate.now(clock));
+        List<Order> rows = adminOrderMapper.selectQueryPage(shopId, q, EXPORT_MAX_ROWS, 0);
+
+        List<List<Object>> data = new ArrayList<List<Object>>(rows.size());
+        for (AdminOrderVO vo : toVOs(rows)) {
+            List<Object> line = new ArrayList<Object>(EXPORT_HEADERS.size());
+            line.add(vo.getOrderNo());
+            line.add(vo.getShopName());
+            line.add(Integer.valueOf(vo.getTotalQuantity()));
+            line.add(vo.getPayAmount());
+            line.add(vo.getReceiverName());
+            // ★ 只有脱敏值这一个来源；实体上的原号码出不了 Service
+            line.add(vo.getReceiverPhoneMasked());
+            line.add(vo.getReceiverAddress());
+            line.add(vo.getStatus());
+            line.add(vo.getPayType());
+            line.add(vo.getOrderType());
+            line.add(vo.getOrderCategory());
+            line.add(vo.getLogisticsType());
+            line.add(vo.getStoreName());
+            line.add(vo.getTrackingNo());
+            line.add(vo.getAfterSaleStatus());
+            line.add(vo.getCreateTime());
+            data.add(line);
+        }
+        return Result.ok(XlsxWriter.write("订单列表", EXPORT_HEADERS, data));
     }
 
     // ==================================================================
@@ -285,6 +355,23 @@ public class OrderQueryService {
      * <p>★ 空串一律当「不筛」：否则 SQL 变成 {@code order_no = ''}，
      * 用户会觉得「怎么搜都搜不到」。
      */
+    /**
+     * 校验快捷时间取值，合法返回 {@code null}，非法返回错误文案。
+     *
+     * <p>★ 列表和导出共用同一个校验：导出是绕开页面最省事的后门，
+     * 各自写一遍校验，总有一天会忘掉一处。
+     *
+     * <p>★ 不静默当成「不筛」：那样用户以为筛了近 90 天，实际看到的是全表，
+     * 和 P04b（非法状态被忽略）是同一类错误。
+     */
+    private String validateQuick(AdminOrderQuery query) {
+        String quick = trimToNull(query == null ? null : query.getQuickDate());
+        if (quick != null && !QUICK_OPTIONS.contains(quick)) {
+            return "不支持的快捷时间：" + quick;
+        }
+        return null;
+    }
+
     private AdminOrderQuery normalize(AdminOrderQuery raw, LocalDate today) {
         AdminOrderQuery q = new AdminOrderQuery();
         if (raw == null) {

@@ -129,3 +129,10 @@ CREATE INDEX IF NOT EXISTS idx_order_user        ON tb_order (user_id);
 CREATE INDEX IF NOT EXISTS idx_order_pay_time    ON tb_order (pay_time);
 CREATE INDEX IF NOT EXISTS idx_order_item_order  ON tb_order_item (order_id);
 CREATE INDEX IF NOT EXISTS idx_message_shop      ON tb_message (shop_id);
+
+-- ★ P23 导入的并发兜底：同一店铺内商品编码唯一。
+--   导入是「先 count 再 insert」，两个并发导入之间仍有窗口；
+--   这个唯一索引让第二个 INSERT 直接失败（Service 计入 failed），
+--   而不是插出两条同编码商品 —— 之后每次导入都只更新其中一条，另一条永远陈旧。
+--   product_code 为 NULL 的行不受约束（SQLite 的唯一索引允许多个 NULL）。
+CREATE UNIQUE INDEX IF NOT EXISTS uk_product_shop_code ON tb_product (shop_id, product_code);

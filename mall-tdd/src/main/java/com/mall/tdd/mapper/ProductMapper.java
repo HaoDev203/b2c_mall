@@ -2,6 +2,7 @@ package com.mall.tdd.mapper;
 
 import com.mall.tdd.entity.Product;
 import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -209,4 +210,59 @@ public interface ProductMapper {
     int updateStock(@Param("id") Long id, @Param("shopId") Long shopId,
                     @Param("warehouseStock") Integer warehouseStock,
                     @Param("storeStock") Integer storeStock);
+
+    // ==================================================================
+    // 下方为 P22/P23 导出导入
+    // ==================================================================
+
+    /**
+     * 本店是否已有这个商品编码 —— 导入时判定「新增 or 更新」的唯一依据。
+     *
+     * <p>★★ 判定依据是 {@code product_code} 而<b>不是 id</b>：Excel 里没有数据库 id，
+     * 商家也不知道 id。用 id 判定的实现只能靠「编码当 id 塞进去」，一跑就全乱。
+     *
+     * <p>★ 带 {@code shop_id}：同一个小米产品编码在别家店铺也可能存在，
+     * 不带隔离就会把别家的商品当成自己的去更新。
+     */
+    @Select("SELECT COUNT(*) FROM tb_product WHERE shop_id = #{shopId} "
+            + "AND product_code = #{productCode}")
+    int countByProductCode(@Param("shopId") Long shopId,
+                           @Param("productCode") String productCode);
+
+    /**
+     * 导入新增。
+     *
+     * <p>★ 不写 {@code sales}（真实销量）：新商品的真实销量必然是 0，
+     * 从 Excel 读进来只会引入脏数据 —— 而且销量是交易结果，不是商家能填的资料。
+     * {@code inflated_sales}（注水销量）则相反，它本来就是商家可配置的。
+     *
+     * <p>★ {@code shop_id} 由 Service 从登录态强制写入，这个 SQL 里没有对应的外部输入。
+     */
+    @Insert("INSERT INTO tb_product (shop_id, name, main_image, price, market_price, "
+            + "stock, warehouse_stock, store_stock, stock_warn, inflated_sales, goods_type, "
+            + "category_kind, delivery_types, product_code, status, sort, create_time) "
+            + "VALUES (#{p.shopId}, #{p.name}, #{p.mainImage}, #{p.price}, #{p.marketPrice}, "
+            + "#{p.stock}, #{p.warehouseStock}, #{p.storeStock}, #{p.stockWarn}, "
+            + "#{p.inflatedSales}, #{p.goodsType}, #{p.categoryKind}, #{p.deliveryTypes}, "
+            + "#{p.productCode}, #{p.status}, #{p.sort}, datetime('now','localtime'))")
+    int insert(@Param("p") Product p);
+
+    /**
+     * 导入更新，按 {@code (shop_id, product_code)} 定位。
+     *
+     * <p>★ SET 里<b>刻意没有 {@code sales}</b>：真实销量是订单跑出来的数据，
+     * 商家拿一份改过价格的 Excel 导回来，不该顺手把销量改成表里的数字。
+     * {@code inflated_sales} 可以改 —— 它是商家自己填的展示资源。
+     * （P23 用反射读这段 SQL 原文守着这条，别以为漏了。）
+     *
+     * <p>★ 不带 {@code update_time}：这张表没有这一列，不要为了「规范」去加。
+     */
+    @Update("UPDATE tb_product SET name = #{p.name}, main_image = #{p.mainImage}, "
+            + "price = #{p.price}, market_price = #{p.marketPrice}, stock = #{p.stock}, "
+            + "warehouse_stock = #{p.warehouseStock}, store_stock = #{p.storeStock}, "
+            + "inflated_sales = #{p.inflatedSales}, goods_type = #{p.goodsType}, "
+            + "category_kind = #{p.categoryKind}, delivery_types = #{p.deliveryTypes}, "
+            + "status = #{p.status}, sort = #{p.sort} "
+            + "WHERE shop_id = #{shopId} AND product_code = #{p.productCode}")
+    int updateByProductCode(@Param("shopId") Long shopId, @Param("p") Product p);
 }
