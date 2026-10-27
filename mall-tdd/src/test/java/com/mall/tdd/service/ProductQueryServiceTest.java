@@ -1000,6 +1000,15 @@ class ProductQueryServiceTest {
         }
         assertEquals("P001", updCap.getAllValues().get(0).getProductCode());
         assertEquals("P002", updCap.getAllValues().get(1).getProductCode());
+
+        // ★ 反射读 SQL 原文：Mock 看得见「调了 update」，看不见「SET 里到底改了哪些列」
+        String updSql = sqlOf(ProductMapper.class, "updateByProductCode");
+        assertTrue(updSql.contains("WHERE shop_id = #{shopId}"), "更新必须带店铺隔离：" + updSql);
+        // 注意 " inflated_sales = " 前面是下划线，不会被 " sales = " 误匹配
+        assertFalse(updSql.contains(" sales = "),
+                "真实销量是订单跑出来的，商家拿一份改过价的 Excel 导回来不许覆盖它：" + updSql);
+        assertTrue(updSql.contains("inflated_sales = "),
+                "注水销量本来就是商家自己配的，应当能通过导入改");
     }
 
     @Test
