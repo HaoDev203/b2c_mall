@@ -15,9 +15,9 @@
 | B1 | C 端商品列表 | 9 | 9 / 9 | ✅ |
 | B2 | 店铺 Dashboard | 23 | 23 / 23 | ✅ |
 | B3 | C 端订单管理 | 9 | 9 / 9 | ✅ |
-| B4 | 店铺商品管理 | 23 | 0 / 23 | ⬜ |
+| B4 | 店铺商品管理 | 23 | 21 / 23 | 🟡 P22/P23 待做 |
 | B5 | 订单查询 | 24 | 0 / 24 | ⬜ |
-| | **合计** | **88** | **41 / 88** | |
+| | **合计** | **88** | **62 / 88** | |
 
 **全部 🔴 先红**（新模块从零，无既有代码可锁）。
 
@@ -151,42 +151,42 @@
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| P01 | `should_search_by_name_fuzzy` | 模糊，`%` 由 SQL 拼 | [ ] |
-| P02 | `should_filter_by_goods_type` | 用 `goods_type`，**不是** `product_type` | [ ] |
-| P03 | `should_filter_by_category_kind` | 用 `category_kind` | [ ] |
-| P04 | `should_filter_by_status` | 非法状态返回失败不静默 | [ ] |
-| P05 | `should_filter_by_multiple_delivery_types` ★ | `<foreach>` 拼 IN，`#{}` 不是 `${}` | [ ] |
-| P06 | `should_filter_by_category_id` | 分类 ≠ 类别 | [ ] |
-| P07 | `should_apply_all_six_filters_together` | 一次调用 6 个参数全在 | [ ] |
+| P01 | `should_search_by_name_fuzzy` | 模糊，`%` 由 SQL 拼 | [x] |
+| P02 | `should_filter_by_goods_type` | 用 `goods_type`，**不是** `product_type` | [x] |
+| P03 | `should_filter_by_category_kind` | 用 `category_kind` | [x] |
+| P04 | `should_filter_by_status` | 非法状态返回失败不静默 | [x] |
+| P05 | `should_filter_by_multiple_delivery_types` ★ | `<foreach>` + 逗号边界整词匹配，`#{}` 不是 `${}` | [x] |
+| P06 | `should_filter_by_category_id` | 分类 ≠ 类别 | [x] |
+| P07 | `should_apply_all_six_filters_together` | 一次调用 6 个参数全在 | [x] |
 
 ### 列表展示
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| P08 | `should_cap_page_size_and_return_correct_total` | size 上限（防 DoS） | [ ] |
-| P09 | `should_sort_by_sort_field_desc` | 数字越大越靠前（DESC） | [ ] |
-| P10 | `should_return_all_twelve_list_fields` | 12 字段非空 | [ ] |
-| P11 | `should_return_real_and_inflated_sales_separately` ★ | 真实销量 ≠ 含注水 | [ ] |
-| P12 | `should_return_warehouse_and_store_stock_separately` | 桩值须不等 | [ ] |
+| P08 | `should_cap_page_size_and_return_correct_total` | size 上限（防 DoS） | [x] |
+| P09 | `should_sort_by_sort_field_desc` | 数字越大越靠前（DESC） | [x] |
+| P10 | `should_return_all_twelve_list_fields` | 12 字段非空 | [x] |
+| P11 | `should_return_real_and_inflated_sales_separately` ★ | 真实销量 ≠ 含注水 | [x] |
+| P12 | `should_return_warehouse_and_store_stock_separately` | 桩值须不等 | [x] |
 
 ### 删除
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| P13 | `should_reject_delete_when_product_has_orders` ★★ | 先查明细再删 + `never()` 删除 | [ ] |
-| P14 | `should_allow_delete_when_product_has_no_order` | P13 的反例（防「永远失败」） | [ ] |
-| P15 | `should_not_delete_other_shops_product` | 越权最先拦，不查订单引用 | [ ] |
+| P13 | `should_reject_delete_when_product_has_orders` ★★ | 先查明细再删 + `never()` 删除 | [x] |
+| P14 | `should_allow_delete_when_product_has_no_order` | P13 的反例（防「永远失败」） | [x] |
+| P15 | `should_not_delete_other_shops_product` | 越权最先拦，不查订单引用 | [x] |
 
 ### 批量设置
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| P16 | `should_change_status_per_item_independently` ★ | 逐条独立，**不加 `@Transactional`** | [ ] |
-| P17 | `should_report_partial_failure_without_rolling_back` | 返回 `{total,success,failed,results}` | [ ] |
-| P18 | `should_batch_update_delivery_types` | 多选序列化存库 | [ ] |
-| P19 | `should_batch_update_category_id` | — | [ ] |
-| P20 | `should_batch_update_sort` | 统一值 | [ ] |
-| P21 | `should_batch_update_stock` | 仓库/门店两字段 | [ ] |
+| P16 | `should_change_status_per_item_independently` ★ | 逐条独立，**不加 `@Transactional`** | [x] |
+| P17 | `should_report_partial_failure_without_rolling_back` | 返回 `{total,success,failed,results}` | [x] |
+| P18 | `should_batch_update_delivery_types` | 多选序列化存库 | [x] |
+| P19 | `should_batch_update_category_id` | — | [x] |
+| P20 | `should_batch_update_sort` | 统一值 | [x] |
+| P21 | `should_batch_update_stock` | 仓库/门店两字段 | [x] |
 
 ### 导出导入
 

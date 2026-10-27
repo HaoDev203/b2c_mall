@@ -122,14 +122,18 @@ mall-tdd/
     │   ├── entity/        Product / Category / Message / Order / OrderItem
     │   ├── dto/           MallProductVO / TrendVO / MetricVO / MetricsVO / MessageVO / HourAmount
     │   │                  / OrderVO / OrderItemVO / OrderListVO / TabCountVO / BuyNowVO
-    │   ├── mapper/        ProductMapper / CategoryMapper / OrderMapper / MessageMapper（注解 SQL）
+    │   │                  / ProductQuery / AdminProductVO / ProductPageVO
+    │   │                  / ProductBatchCommand / BatchResultVO / BatchItemResultVO
+    │   ├── mapper/        ProductMapper / CategoryMapper / OrderMapper / MessageMapper
+    │   │                  / OrderItemMapper（注解 SQL）
     │   └── service/       MallProductService / MallCategoryService / DashboardService
-    │                      / MallOrderService
+    │                      / MallOrderService / ProductQueryService
     └── test/java/com/mall/tdd/
         ├── common/        UserContextProbeTest（2）
         ├── probe/         MallDbSchemaProbeTest（3）
-        └── service/       DashboardServiceTest（32）/ MallProductServiceTest（8）
+        └── service/       DashboardServiceTest（33）/ MallProductServiceTest（8）
                            / MallCategoryServiceTest（1）/ MallOrderServiceTest（16）
+                           / ProductQueryServiceTest（43）
 ```
 
 ## 进度
@@ -140,7 +144,8 @@ mall-tdd/
 | B1 C 端商品列表 | 9 | ✅ `Tests run: 14` |
 | B2 店铺 Dashboard | 23 | ✅ `Tests run: 46` |
 | B3 C 端订单管理 | 9 | ✅ `Tests run: 63` |
-| B4 商品管理 / B5 订单查询 | 47 | ⬜ |
+| B4 店铺商品管理（P01~P21） | 21 | ✅ `Tests run: 106` |
+| B4 导出导入（P22/P23）+ B5 订单查询 | 26 | ⬜ |
 
 **B1 的变异验证**：删掉排序白名单、把 `putIfAbsent` 改成 `put` 后重跑，
 `Failures: 5, Errors: 1` —— C07（注入）与 C02（去重保留首条）都红在断言上。
@@ -177,6 +182,35 @@ B3 真库探针（在 `mall.db` 副本上跑，会写数据所以不碰真库）
 | 买家列表仍含该订单 | false |
 | 后台列表含该订单 | **true → true**（删前删后都在） |
 | 别人（user 1002）去删它 | **0 行** |
+
+**B4 的变异验证**：一次改坏 7 处（关键词自己拼 `%`、类型筛选用 `category_kind`、
+配送方式去掉逗号边界、跳过订单引用校验直接删、注水销量加进真实销量、
+门店库存 null 兜成 0、去掉页大小上限），`Tests run: 100, Failures: 9, Errors: 2`。
+8 条精确命中预期断言；另外 3 条是变异本身的连带（`product()` 辅助方法没设 `sales`，
+拆箱成 NPE），不是测试漏洞。**目标测试无一漏网**。
+
+> 这一批从一开始就把 B3 的教训用上了：**每个筛选条件都配一条反射断言**。
+> 只看返回值的话，「用 `product_type` 代替 `goods_type`」这种错照样绿 ——
+> Mock 只验参数透传，看不见字段语义。
+
+B4 真库探针（在 `mall.db` 副本上跑，会写数据所以不碰真库）：
+
+| 验证项 | 结果 |
+|---|---|
+| 列表 / 总数（无筛选） | 7 / 7 ✅ 同口径 |
+| `keyword='手机'` | 命中「智能手机 Pro」「旧款手机 X」 |
+| 筛 `express` | 6 条，**诱饵 `express_fast` 不在其中**（逗号边界生效） |
+| 筛 `express_fast` | 只命中诱饵自己 1 条 |
+| 筛 `express`+`self_pickup` | 6 条，`express,self_pickup` 那条也被命中 |
+| `ORDER BY sort DESC` | 100 90 80 70 60 50 10 |
+| 分页 `limit=3 offset=0/3` | `1 2 3` / `4 5 7`，无重叠 |
+| `goods_type=normal` / `category_kind=card` / 两者同时 | 7 / 1 / 1（真交集，证明是两个字段） |
+| 只改仓库库存 | warehouse 60→999，**store 40→40 未被动** |
+| shop1 改/删 shop2 的商品 | updateStatus 0 行 / updateStock 0 行 / delete 0 行 |
+| 订单引用计数 | product 1 → 1 条（禁删）、product 4 → 0 条（可删） |
+
+> 探针里那个 `express_fast` 诱饵是**当场插进去的**：不插的话「有没有逗号边界」
+> 在现有数据上表现完全一样，测了等于没测。
 
 **Controller 暂缓**：验收全在 Service 层，Controller 没有对应条目，
 先写就是无人守护的代码。5 个页面的接口在 B5 之后一次性补齐。
