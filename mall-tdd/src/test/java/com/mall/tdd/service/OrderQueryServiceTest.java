@@ -16,6 +16,10 @@ import com.mall.tdd.mapper.OrderMapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,11 +29,13 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
+import java.io.ByteArrayInputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -727,6 +733,117 @@ class OrderQueryServiceTest {
         //   商家以为订单被删了，实际是被拒了 —— 两种完全不同的处置方式。
         assertEquals(Integer.valueOf(500), detail.getCode());
         assertNull(detail.getData());
+    }
+
+    // ==========================================================
+    // O24 · 导出当前筛选结果
+    // ==========================================================
+
+    @Test
+    @DisplayName("O24 导出命中筛选的 4 单而不是全表 12 单，手机号同样脱敏")
+    void should_export_current_filtered_orders() throws Exception {
+        List<Order> hits = new ArrayList<Order>();
+        for (int i = 1; i <= 4; i++) {
+            hits.add(order(Long.valueOf(i), "SO00" + i, OrderStatus.PENDING_SHIP.name()));
+        }
+        stubList(hits, 4L);
+        // 每单 2 行明细共 3 件：正好把「件数」和「行数」分开（O15 的口径要一直保持）
+        List<OrderItem> items = new ArrayList<OrderItem>();
+        for (int i = 1; i <= 4; i++) {
+            items.add(item(Long.valueOf(i), "商品A", 1));
+            items.add(item(Long.valueOf(i), "商品B", 2));
+        }
+        when(orderMapper.selectItemsByOrderIds(any())).thenReturn(items);
+
+        Result<byte[]> result = service.exportOrders(new AdminOrderQuery()
+                .status(OrderStatus.PENDING_SHIP.name())
+                .range("2026-10-01", null));
+
+        assertEquals(Integer.valueOf(200), result.getCode(), result.getMsg());
+        assertNotNull(result.getData());
+
+        // ★ 和 P22 一样：把字节流当 xlsx 真打开，断言文件可用，而不是断言「调用过写方法」
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(result.getData()))) {
+            Sheet sheet = wb.getSheetAt(0);
+            assertEquals(4, sheet.getLastRowNum(), "第 0 行是表头，数据行应为 4（全表是 12）");
+            assertEquals(Arrays.asList("订单编号", "店铺名称", "商品件数", "实付金额",
+                            "收货人", "联系电话", "收货地址", "订单状态", "支付方式",
+                            "订单类型", "订单类别", "物流类型", "门店名称", "物流单号",
+                            "售后状态", "下单时间"),
+                    headersOf(sheet));
+
+            assertEquals("SO001", textAt(sheet, 1, 0));
+            assertEquals("测试店铺", textAt(sheet, 1, 1));
+            assertEquals("3", textAt(sheet, 1, 2), "共 N 件是数量之和，不是明细行数 2");
+            assertEquals("128", textAt(sheet, 1, 3));
+            assertEquals("张三", textAt(sheet, 1, 4));
+            // ★★ 导出文件是最容易漏脱敏的地方：列表页遮了、导出文件却是全员原号码，
+            //    这个文件一旦发到群里就是批量泄露。
+            assertEquals("138****8000", textAt(sheet, 1, 5));
+
+            for (int r = 1; r <= 4; r++) {
+                for (int c = 0; c < 16; c++) {
+                    String v = textAt(sheet, r, c);
+                    assertFalse(v != null && v.contains("13800138000"),
+                            "第 " + r + " 行第 " + c + " 列泄露了原号码：" + v);
+                }
+            }
+        }
+
+        // ★ 筛选条件原样透传 + 分页被忽略
+        ArgumentCaptor<AdminOrderQuery> qCap = ArgumentCaptor.forClass(AdminOrderQuery.class);
+        ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<Integer> offsetCap = ArgumentCaptor.forClass(Integer.class);
+        verify(adminOrderMapper).selectQueryPage(eq(SHOP_ID), qCap.capture(),
+                limitCap.capture(), offsetCap.capture());
+        assertEquals(OrderStatus.PENDING_SHIP.name(), qCap.getValue().getStatus());
+        assertEquals("2026-10-01", qCap.getValue().getStartDate());
+        assertNull(qCap.getValue().getEndDate(), "只填开始日期就只筛开始，另一半不能被悄悄补成今天");
+        assertEquals(Integer.valueOf(0), offsetCap.getValue(), "导出不分页，从第 0 行开始");
+        assertTrue(limitCap.getValue().intValue() > 100,
+                "导出上限必须大于后台一页的 100 条，实际：" + limitCap.getValue());
+    }
+
+    @Test
+    @DisplayName("O24b 未登录导出：返回 401 且一条 SQL 都不发")
+    void should_reject_export_when_not_logged_in() {
+        UserContext.clear();
+
+        Result<byte[]> result = service.exportOrders(new AdminOrderQuery());
+
+        assertEquals(Integer.valueOf(401), result.getCode());
+        verify(adminOrderMapper, never()).selectQueryPage(anyLong(), any(AdminOrderQuery.class),
+                anyInt(), anyInt());
+    }
+
+    /** 表头一行，按原顺序返回 */
+    private static List<String> headersOf(Sheet sheet) {
+        Row head = sheet.getRow(0);
+        List<String> list = new ArrayList<String>();
+        for (int i = 0; i < head.getLastCellNum(); i++) {
+            Cell c = head.getCell(i);
+            list.add(c == null ? null : c.getStringCellValue());
+        }
+        return list;
+    }
+
+    /** 读单元格文本：数值型按整数形态输出（128 而不是 128.0），其余取字符串 */
+    private static String textAt(Sheet sheet, int rowIdx, int colIdx) {
+        Cell c = sheet.getRow(rowIdx).getCell(colIdx);
+        if (c == null) {
+            return null;
+        }
+        switch (c.getCellType()) {
+            case NUMERIC:
+                double d = c.getNumericCellValue();
+                return d == Math.rint(d) ? String.valueOf((long) d) : String.valueOf(d);
+            case STRING:
+                return c.getStringCellValue();
+            case BLANK:
+                return "";
+            default:
+                return String.valueOf(c);
+        }
     }
 
     // ==========================================================

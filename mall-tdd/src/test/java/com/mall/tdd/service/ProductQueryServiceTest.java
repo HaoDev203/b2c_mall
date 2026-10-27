@@ -5,6 +5,7 @@ import com.mall.tdd.common.Result;
 import com.mall.tdd.common.UserContext;
 import com.mall.tdd.dto.AdminProductVO;
 import com.mall.tdd.dto.BatchResultVO;
+import com.mall.tdd.dto.ImportResultVO;
 import com.mall.tdd.dto.ProductBatchCommand;
 import com.mall.tdd.dto.ProductPageVO;
 import com.mall.tdd.dto.ProductQuery;
@@ -14,17 +15,26 @@ import com.mall.tdd.mapper.OrderItemMapper;
 import com.mall.tdd.mapper.ProductMapper;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -828,6 +838,287 @@ class ProductQueryServiceTest {
 
         assertEquals(Integer.valueOf(401), result.getCode(), "未登录应返回 401");
         verifyNoInteractions(productMapper);
+    }
+
+    // ==========================================================
+    // P22 · 导出当前筛选结果
+    // ==========================================================
+
+    @Test
+    @DisplayName("P22 导出的 3 行是筛选结果而不是全表；分页参数被忽略")
+    void should_export_current_filtered_result() throws Exception {
+        // 全表 7 条，符合 status=on_sale + keyword=手机 的只有这 3 条
+        List<Product> hits = Arrays.asList(
+                productForExport(Long.valueOf(1), "SC-P1", "智能手机 Pro"),
+                productForExport(Long.valueOf(2), "SC-P2", "智能手机 Air"),
+                productForExport(Long.valueOf(3), "SC-P3", "智能手机 mini"));
+        stubList(hits, 3L);
+
+        Result<byte[]> result = service.exportProducts(
+                query("手机", null, null, "on_sale", null, null));
+
+        assertEquals(Integer.valueOf(200), result.getCode(), result.getMsg());
+        byte[] xlsx = result.getData();
+        assertNotNull(xlsx, "导出必须返回文件内容");
+        assertTrue(xlsx.length > 0, "导出文件不能是 0 字节");
+
+        // ★ 真的把这个字节流当 xlsx 打开读回来 —— 断言的是「文件可用」，
+        //   不是「我们调用过某个写文件的方法」。mock 一个 Workbook 永远是绿的。
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            Sheet sheet = wb.getSheetAt(0);
+            assertEquals(3, sheet.getLastRowNum(), "第 0 行是表头，数据行应为 3（全表是 7）");
+
+            // 列头就是后台列表的 12 个字段 + 商品编码（编码不进列表，但导出必须带，
+            // 否则导出→改→导入时认不出是哪个商品，全变成新增）
+            assertEquals(Arrays.asList("商品编码", "商品名称", "主图", "市场价", "销售价",
+                            "真实销量", "注水销量", "仓库库存", "门店库存", "商品类型",
+                            "商品类别", "状态", "配送方式"),
+                    headersOf(sheet));
+
+            assertEquals("SC-P1", textAt(sheet, 1, 0));
+            assertEquals("智能手机 Pro", textAt(sheet, 1, 1));
+            assertEquals("99", textAt(sheet, 1, 4), "销售价按数值写入，Excel 里可参与求和");
+            // ★ 真实销量与注水销量必须是两列，合并了商家就分不清真实经营数据
+            assertEquals("120", textAt(sheet, 1, 5));
+            assertEquals("5000", textAt(sheet, 1, 6));
+            assertEquals("8", textAt(sheet, 1, 7));
+            assertEquals("2", textAt(sheet, 1, 8));
+            assertEquals("express,self_pickup", textAt(sheet, 1, 12));
+        }
+
+        // ★ 筛选条件原样透传 + 分页被忽略（offset 从 0 起、上限远大于一页）
+        ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<Integer> offsetCap = ArgumentCaptor.forClass(Integer.class);
+        verify(productMapper).selectAdminPage(eq(SHOP_ID), eq("手机"), isNull(), isNull(),
+                eq("on_sale"), isNull(), isNull(), limitCap.capture(), offsetCap.capture());
+        assertEquals(Integer.valueOf(0), offsetCap.getValue(), "导出不分页，从第 0 行开始");
+        assertTrue(limitCap.getValue().intValue() > 100,
+                "导出上限必须大于后台一页的 100 条，否则只导了第一页，实际：" + limitCap.getValue());
+    }
+
+    @Test
+    @DisplayName("P22b 命中 130 条就导出 130 行：不能被一页 100 条截断")
+    void should_export_all_matching_rows_beyond_page_size() throws Exception {
+        List<Product> many = new ArrayList<Product>();
+        for (int i = 1; i <= 130; i++) {
+            many.add(productForExport(Long.valueOf(i), "SC-" + i, "手机" + i));
+        }
+        stubList(many, 130L);
+
+        Result<byte[]> result = service.exportProducts(
+                query("手机", null, null, "on_sale", null, null));
+
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(result.getData()))) {
+            assertEquals(130, wb.getSheetAt(0).getLastRowNum(),
+                    "导出的是筛选结果全集，不是当前这一页");
+        }
+    }
+
+    @Test
+    @DisplayName("P22c 导出沿用列表的状态白名单：非法 status 不许绕过校验导全表")
+    void should_reject_export_with_invalid_status() {
+        Result<byte[]> result = service.exportProducts(
+                query(null, null, null, "deleted", null, null));
+
+        assertEquals(Integer.valueOf(500), result.getCode());
+        assertNull(result.getData(), "校验失败不该产出任何文件");
+        // ★ 导出是绕开列表页最省事的后门：这里不校验，随便传个 status 就把全状态数据导走了
+        verifyNoInteractions(productMapper);
+    }
+
+    @Test
+    @DisplayName("P22d 未登录导出：返回 401 且一条 SQL 都不发")
+    void should_reject_export_when_not_logged_in() {
+        UserContext.clear();
+
+        Result<byte[]> result = service.exportProducts(query(null, null, null, null, null, null));
+
+        assertEquals(Integer.valueOf(401), result.getCode());
+        verifyNoInteractions(productMapper);
+    }
+
+    // ==========================================================
+    // P23 · 导入：按商品编码判定新增 / 更新
+    // ==========================================================
+
+    @Test
+    @DisplayName("P23 编码已存在则更新、不存在则新增；Excel 里的 shop_id 被忽略")
+    void should_import_by_product_code_upsert() throws Exception {
+        Map<String, Integer> existing = new LinkedHashMap<String, Integer>();
+        existing.put("P001", Integer.valueOf(1));
+        existing.put("P002", Integer.valueOf(1));
+        existing.put("P999", Integer.valueOf(0));
+        for (Map.Entry<String, Integer> e : existing.entrySet()) {
+            when(productMapper.countByProductCode(SHOP_ID, e.getKey()))
+                    .thenReturn(e.getValue().intValue());
+        }
+
+        // ★ 故意多塞一列 shop_id = 2（别家店铺）：导入必须只认当前登录店铺
+        byte[] xlsx = buildWorkbook(
+                Arrays.asList("商品编码", "商品名称", "销售价", "市场价", "总库存",
+                        "仓库库存", "门店库存", "商品类型", "商品类别", "配送方式",
+                        "状态", "排序", "主图", "真实销量", "注水销量", "shop_id"),
+                Arrays.asList(
+                        row("P001", "手机壳", "19.9", "29.9", "100", "80", "20", "normal",
+                                "physical", "express", "on_sale", "5", "http://img/a.jpg", "10", "0", "2"),
+                        row("P002", "数据线", "9.9", "19.9", "50", "40", "10", "normal",
+                                "physical", "express", "on_sale", "3", "http://img/b.jpg", "8", "0", "2"),
+                        row("P999", "新品手机", "2999", "3299", "20", "18", "2", "normal",
+                                "physical", "express,self_pickup", "on_sale", "9",
+                                "http://img/c.jpg", "0", "0", "2")));
+
+        Result<ImportResultVO> result = service.importProducts(new ByteArrayInputStream(xlsx));
+
+        assertEquals(Integer.valueOf(200), result.getCode(), result.getMsg());
+        ImportResultVO data = result.getData();
+        assertEquals(Integer.valueOf(3), data.getTotal(), "total = 数据行数，不含表头");
+        assertEquals(Integer.valueOf(1), data.getInsert(), "只有 P999 是新增");
+        assertEquals(Integer.valueOf(2), data.getUpdate(), "P001 / P002 已存在");
+        assertEquals(Integer.valueOf(0), data.getFailed());
+
+        // 新增的那一条必须强制带上当前店铺
+        ArgumentCaptor<Product> insertCap = ArgumentCaptor.forClass(Product.class);
+        verify(productMapper).insert(insertCap.capture());
+        Product inserted = insertCap.getValue();
+        assertEquals("P999", inserted.getProductCode());
+        assertEquals(SHOP_ID, inserted.getShopId(), "★ Excel 里写 shop_id=2 也不生效");
+        assertEquals("新品手机", inserted.getName());
+        assertEquals(Double.valueOf(2999.0), inserted.getPrice());
+        assertEquals(Double.valueOf(3299.0), inserted.getMarketPrice());
+        assertEquals(Integer.valueOf(20), inserted.getStock());
+        assertEquals(Integer.valueOf(18), inserted.getWarehouseStock());
+        assertEquals(Integer.valueOf(2), inserted.getStoreStock());
+        assertEquals(Integer.valueOf(9), inserted.getSort());
+        assertEquals("express,self_pickup", inserted.getDeliveryTypes());
+
+        // 更新的两条同样带 shop_id，越权改不到别家的同名编码
+        ArgumentCaptor<Long> shopCap = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Product> updCap = ArgumentCaptor.forClass(Product.class);
+        verify(productMapper, times(2)).updateByProductCode(shopCap.capture(), updCap.capture());
+        for (Long s : shopCap.getAllValues()) {
+            assertEquals(SHOP_ID, s, "update 的 WHERE 必须带当前店铺");
+        }
+        assertEquals("P001", updCap.getAllValues().get(0).getProductCode());
+        assertEquals("P002", updCap.getAllValues().get(1).getProductCode());
+    }
+
+    @Test
+    @DisplayName("P23b 编码为空的行跳过并计入失败，绝不当新商品插进去")
+    void should_skip_row_without_product_code() throws Exception {
+        when(productMapper.countByProductCode(SHOP_ID, "P001")).thenReturn(1);
+        when(productMapper.countByProductCode(SHOP_ID, "P999")).thenReturn(0);
+
+        byte[] xlsx = buildWorkbook(
+                Arrays.asList("商品编码", "商品名称", "销售价"),
+                Arrays.asList(
+                        row("P001", "手机壳", "19.9"),
+                        row("", "没有编码的商品", "9.9"),
+                        row("P999", "新品", "2999")));
+
+        Result<ImportResultVO> result = service.importProducts(new ByteArrayInputStream(xlsx));
+
+        ImportResultVO data = result.getData();
+        assertEquals(Integer.valueOf(3), data.getTotal());
+        assertEquals(Integer.valueOf(1), data.getInsert());
+        assertEquals(Integer.valueOf(1), data.getUpdate());
+        assertEquals(Integer.valueOf(1), data.getFailed(), "空编码那一行算失败");
+        // ★ 少了这道判断，每导一次就多一批没有编码的空商品，而且删都删不干净
+        verify(productMapper, times(1)).insert(any(Product.class));
+    }
+
+    @Test
+    @DisplayName("P23c 未登录导入：返回 401，一个商品都不写")
+    void should_reject_import_when_not_logged_in() throws Exception {
+        UserContext.clear();
+
+        byte[] xlsx = buildWorkbook(
+                Arrays.asList("商品编码", "商品名称"),
+                Collections.singletonList(row("P001", "手机壳")));
+
+        Result<ImportResultVO> result = service.importProducts(new ByteArrayInputStream(xlsx));
+
+        assertEquals(Integer.valueOf(401), result.getCode());
+        verifyNoInteractions(productMapper);
+    }
+
+    /** 供导出断言用的商品：把导出涉及的每一列都填上不同的值 */
+    private Product productForExport(Long id, String code, String name) {
+        Product p = product(id, name, Integer.valueOf(10));
+        p.setProductCode(code);
+        p.setMainImage("http://img/" + code + ".jpg");
+        p.setMarketPrice(Double.valueOf(129.00));
+        p.setPrice(Double.valueOf(99.00));
+        p.setSales(Integer.valueOf(120));
+        p.setInflatedSales(Integer.valueOf(5000));
+        p.setWarehouseStock(Integer.valueOf(8));
+        p.setStoreStock(Integer.valueOf(2));
+        p.setGoodsType("normal");
+        p.setCategoryKind("physical");
+        p.setStatus("on_sale");
+        p.setDeliveryTypes("express,self_pickup");
+        return p;
+    }
+
+    private static List<String> row(String... values) {
+        return Arrays.asList(values);
+    }
+
+    /**
+     * 造一个 xlsx 字节流。全部按<b>文本</b>写入 —— 商家填模板时单元格格式千奇百怪，
+     * 导入端必须能从文本里把价格、库存解析成数字，不能指望单元格类型是 NUMERIC。
+     */
+    private static byte[] buildWorkbook(List<String> headers, List<List<String>> rows)
+            throws Exception {
+        try (XSSFWorkbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("商品");
+            Row head = sheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                head.createCell(i).setCellValue(headers.get(i));
+            }
+            for (int r = 0; r < rows.size(); r++) {
+                Row line = sheet.createRow(r + 1);
+                List<String> values = rows.get(r);
+                for (int c = 0; c < values.size(); c++) {
+                    String v = values.get(c);
+                    if (v == null) {
+                        continue;   // 空编码：留成空单元格
+                    }
+                    line.createCell(c).setCellValue(v);
+                }
+            }
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private static List<String> headersOf(Sheet sheet) {
+        Row head = sheet.getRow(0);
+        List<String> list = new ArrayList<String>();
+        for (int i = 0; i < head.getLastCellNum(); i++) {
+            Cell c = head.getCell(i);
+            list.add(c == null ? null : c.getStringCellValue());
+        }
+        return list;
+    }
+
+    /** 读单元格文本：数值型按整数形态输出（120 而不是 120.0），其余取字符串 */
+    private static String textAt(Sheet sheet, int rowIdx, int colIdx) {
+        Cell c = sheet.getRow(rowIdx).getCell(colIdx);
+        if (c == null) {
+            return null;
+        }
+        switch (c.getCellType()) {
+            case NUMERIC:
+                double d = c.getNumericCellValue();
+                return d == Math.rint(d) ? String.valueOf((long) d) : String.valueOf(d);
+            case STRING:
+                return c.getStringCellValue();
+            case BLANK:
+                return "";
+            default:
+                return String.valueOf(c);
+        }
     }
 
     // ==========================================================

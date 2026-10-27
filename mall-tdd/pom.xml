@@ -18,6 +18,8 @@
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jacoco.version>0.8.11</jacoco.version>
+        <!-- 本机 ~/.m2 已有 5.2.5，断网也能构建 -->
+        <poi.version>5.2.5</poi.version>
     </properties>
 
     <dependencies>
@@ -42,6 +44,16 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+        </dependency>
+
+        <!-- ★ P22/P23/O24 导出导入用 POI（唯一为「文件」引入的依赖）。
+             只做 .xlsx，不引 poi-scratchpad（那是 .xls 用的，本项目模板是 xlsx）。
+             ★ 测试也用 POI 直接读写 xlsx：断言是「真的能打开、行数对、单元格值对」，
+             而不是去 mock 一个 Workbook —— mock 出来的东西永远绿，证明不了文件是可用的。 -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
 
         <!-- ★ 版本由根 pom 的 dependencyManagement 统一管理，这里写 version 会与之冲突 -->
