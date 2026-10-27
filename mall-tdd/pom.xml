@@ -80,6 +80,15 @@
                  @{argLine} 是「延迟求值」：先拼上 jacoco 的 agent，再追加编码参数。 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- ★ 保留方法参数名。Spring 的 @RequestParam / @PathVariable 不写 value 时靠它，
+                         测试里也有 W04 用反射断言「签名里不许出现 userId / shopId」——
+                         不开这个选项，反射读到的是 arg0 / arg1，那条断言会永远假绿。 -->
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+            <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
