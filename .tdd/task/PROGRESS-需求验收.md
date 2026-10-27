@@ -15,9 +15,9 @@
 | B1 | C 端商品列表 | 9 | 9 / 9 | ✅ |
 | B2 | 店铺 Dashboard | 23 | 23 / 23 | ✅ |
 | B3 | C 端订单管理 | 9 | 9 / 9 | ✅ |
-| B4 | 店铺商品管理 | 23 | 21 / 23 | 🟡 P22/P23 待做 |
-| B5 | 订单查询 | 24 | 23 / 24 | 🟡 O24 待做 |
-| | **合计** | **88** | **85 / 88** | |
+| B4 | 店铺商品管理 | 23 | 23 / 23 | ✅ |
+| B5 | 订单查询 | 24 | 24 / 24 | ✅ |
+| | **合计** | **88** | **88 / 88** | ✅ |
 
 **全部 🔴 先红**（新模块从零，无既有代码可锁）。
 
@@ -145,7 +145,7 @@
 
 ## B4 · 店铺商品管理（23 条）
 
-测试类：`ProductQueryServiceTest` / `ProductExportServiceTest`
+测试类：`ProductQueryServiceTest`（P22/P23 导出导入也在这个类里）
 
 ### 顶部筛选
 
@@ -192,14 +192,14 @@
 
 | 编号 | 测试方法 | 断言要点 | 状态 |
 |---|---|---|---|
-| P22 | `should_export_current_filtered_result` | 行数=筛选结果，忽略分页 | [ ] |
-| P23 | `should_import_by_product_code_upsert` | 按 `product_code` 判新增/更新 | [ ] |
+| P22 | `should_export_current_filtered_result` | 行数=筛选结果，忽略分页 | [x] |
+| P23 | `should_import_by_product_code_upsert` | 按 `product_code` 判新增/更新 | [x] |
 
 ---
 
 ## B5 · 订单查询（24 条）
 
-测试类：`OrderQueryServiceTest` / `OrderExportServiceTest`
+测试类：`OrderQueryServiceTest`（O24 导出也在这个类里）
 
 ### 顶部筛选
 
@@ -254,7 +254,7 @@
 | O22 | `should_not_return_other_shops_orders` | 所有分支都带 `shop_id` | [x] |
 | O22b | `should_cover_shop_isolation_in_every_sql` | 7 个带 shopId 的方法逐个断言隔离（变异验证逼出来的） | [x] |
 | O23 | `should_reject_ship_and_detail_of_other_shop_order` | 越权返回失败，不发任何 UPDATE | [x] |
-| O24 | `should_export_current_filtered_orders` | 行数=筛选结果，手机号仍脱敏 | [ ] |
+| O24 | `should_export_current_filtered_orders` | 行数=筛选结果，手机号仍脱敏 | [x] |
 
 ---
 
