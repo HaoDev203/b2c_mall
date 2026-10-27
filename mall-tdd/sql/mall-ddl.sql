@@ -87,7 +87,10 @@ CREATE TABLE IF NOT EXISTS tb_order (
   receiver_phone    TEXT,           -- ★ 出接口前必须脱敏，见 O16
   receiver_address  TEXT,
   shipping_status   TEXT,
-  after_sale_status TEXT,           -- none 暂无 / applying 申请中 / done 已完成
+  after_sale_status TEXT,           -- ★ NULL 表示「暂无售后」，不是字符串 'none'
+                                    --   新订单不写这一列天然就是 NULL，不会出现「漏写 none 变成未知状态」
+                                    --   其余取值：applying 申请中 / done 已完成
+                                    --   筛选「暂无售后」时传 NONE，Service 翻译成 IS NULL（O08b）
   is_deleted        INTEGER DEFAULT 0,  -- ★ 买家软删除：1 = 买家侧隐藏，后台仍可见
   remark            TEXT,
   create_time       TEXT,
