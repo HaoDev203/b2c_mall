@@ -263,6 +263,13 @@ public class OrderQueryService {
             return Result.fail("请先选择要发货的订单");
         }
         String no = trimToNull(trackingNo);
+        // ★★ 和单条 {@link #ship} 同一条规则，不能只守一个入口。
+        //   放行的后果不可逆：订单会被推进 PENDING_RECEIVE 且 tracking_no 为 NULL，
+        //   而 shipOrder 的 WHERE 带 status = 'PENDING_SHIP' —— 状态已经不是待发货，
+        //   商家连补单号的入口都没有了。批量是一次调用共用一个单号，没单号即整批非法。
+        if (no == null) {
+            return Result.fail("请填写物流单号");
+        }
 
         List<BatchItemResultVO> results = new ArrayList<BatchItemResultVO>(orderIds.size());
         int success = 0;

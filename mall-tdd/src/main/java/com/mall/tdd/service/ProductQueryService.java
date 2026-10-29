@@ -242,6 +242,15 @@ public class ProductQueryService {
                 failed++;
                 continue;
             }
+            // ★★ 状态必须过白名单。写入口不守、读入口守，后果是闭环死锁：
+            //    非法值（如 'hacked'）入库后，前台查不到（只认 on_sale），
+            //    后台想按状态筛出来修，反被白名单拒掉（「状态取值非法：hacked」）——
+            //    脏数据既看不见也筛不到。整行在发任何 SQL 之前就拒掉。
+            String rowStatus = trimToNull(row.get(COL_STATUS));
+            if (rowStatus != null && !ALLOWED_STATUS.contains(rowStatus)) {
+                failed++;
+                continue;
+            }
             try {
                 Product p = toProduct(row);
                 p.setShopId(shopId);        // ★ 覆盖任何来源的 shop_id

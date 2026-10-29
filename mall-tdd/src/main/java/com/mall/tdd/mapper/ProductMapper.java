@@ -255,14 +255,41 @@ public interface ProductMapper {
      * {@code inflated_sales} 可以改 —— 它是商家自己填的展示资源。
      * （P23 用反射读这段 SQL 原文守着这条，别以为漏了。）
      *
+     * <p>★★ <b>每一列都套 {@code <if>}，缺列不清空。</b>
+     * 原先这里是全字段无条件 SET，后果实测过：商家想「批量改价」，自建一张
+     * 只有【商品编码 + 销售价】两列的表格导进来，接口返回
+     * {@code update:1 / failed:0}（标准成功提示），库里
+     * {@code name / status / stock / main_image / goods_type / sort} 全被写成 NULL ——
+     * 商品名没了、状态空了，前台立刻查不到这个商品。
+     *
+     * <p>★ 这不是边角场景：商家不会「拿完整导出文件删掉几列」，
+     * 他们通常直接新建一张两列的表。所以语义定为
+     * <b>「表格里没有这一列 = 不想改这一列」</b>，而不是「没填 = 清空」。
+     *
+     * <p>★ {@code product_code = product_code} 是<b>吃逗号</b>用的（同
+     * {@link #updateStock}）：每个 {@code <if>} 都敢放心带逗号，末尾必须有一个
+     * 恒真赋值兜住，否则最后一个 {@code <if>} 成立时 SET 会以逗号收尾、直接语法错误。
+     * 写自己等于没写，SQLite 不会因此产生额外开销。
+     *
      * <p>★ 不带 {@code update_time}：这张表没有这一列，不要为了「规范」去加。
      */
-    @Update("UPDATE tb_product SET name = #{p.name}, main_image = #{p.mainImage}, "
-            + "price = #{p.price}, market_price = #{p.marketPrice}, stock = #{p.stock}, "
-            + "warehouse_stock = #{p.warehouseStock}, store_stock = #{p.storeStock}, "
-            + "inflated_sales = #{p.inflatedSales}, goods_type = #{p.goodsType}, "
-            + "category_kind = #{p.categoryKind}, delivery_types = #{p.deliveryTypes}, "
-            + "status = #{p.status}, sort = #{p.sort} "
-            + "WHERE shop_id = #{shopId} AND product_code = #{p.productCode}")
+    @Update("<script>"
+            + "UPDATE tb_product SET "
+            + "<if test='p.name != null'> name = #{p.name}, </if>"
+            + "<if test='p.mainImage != null'> main_image = #{p.mainImage}, </if>"
+            + "<if test='p.price != null'> price = #{p.price}, </if>"
+            + "<if test='p.marketPrice != null'> market_price = #{p.marketPrice}, </if>"
+            + "<if test='p.stock != null'> stock = #{p.stock}, </if>"
+            + "<if test='p.warehouseStock != null'> warehouse_stock = #{p.warehouseStock}, </if>"
+            + "<if test='p.storeStock != null'> store_stock = #{p.storeStock}, </if>"
+            + "<if test='p.inflatedSales != null'> inflated_sales = #{p.inflatedSales}, </if>"
+            + "<if test='p.goodsType != null'> goods_type = #{p.goodsType}, </if>"
+            + "<if test='p.categoryKind != null'> category_kind = #{p.categoryKind}, </if>"
+            + "<if test='p.deliveryTypes != null'> delivery_types = #{p.deliveryTypes}, </if>"
+            + "<if test='p.status != null'> status = #{p.status}, </if>"
+            + "<if test='p.sort != null'> sort = #{p.sort}, </if>"
+            + "product_code = product_code "
+            + "WHERE shop_id = #{shopId} AND product_code = #{p.productCode}"
+            + "</script>")
     int updateByProductCode(@Param("shopId") Long shopId, @Param("p") Product p);
 }
