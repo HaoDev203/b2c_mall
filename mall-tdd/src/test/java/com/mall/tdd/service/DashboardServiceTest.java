@@ -24,7 +24,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -52,8 +55,8 @@ import static org.mockito.Mockito.when;
  * 所以在 {@code @BeforeEach} 手动 set、{@code @AfterEach} 手动 clear，
  * <b>不要 mockStatic</b> —— 静态 mock 与参数化测试一起跑会互相污染。
  *
- * <p>日期用相对日期：Service 内部按 {@code LocalDate.now()} 取今天，
- * 测试用同一个口径算，两边必然一致（唯一风险是恰好在零点那一刻跑测试）。
+ * <p>日期来自注入的 {@link Clock}，setUp 里用 {@code Clock.fixed} 钉死：
+ * Service 和断言取同一个来源，跨零点也不会算出不同的「今天」。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("B2 店铺 Dashboard")
@@ -72,6 +75,9 @@ class DashboardServiceTest {
     private String today;
     private String yesterday;
 
+    /** 钉死的时钟：Service 与断言取同一个来源，跨零点也不会不一致 */
+    private Clock clock;
+
     @Mock
     private OrderMapper orderMapper;
 
@@ -85,12 +91,15 @@ class DashboardServiceTest {
 
     @BeforeEach
     void setUp() {
-        today = LocalDate.now().toString();
-        yesterday = LocalDate.now().minusDays(1).toString();
+        // ★ 注入固定时钟，而不是让 Service 自己 LocalDate.now()：
+        //   两边同源，断言不会在零点前后跑出「昨天/今天」错位（原注释承认过这个风险）
+        clock = Clock.fixed(Instant.now(), ZoneId.systemDefault());
+        today = LocalDate.now(clock).toString();
+        yesterday = LocalDate.now(clock).minusDays(1).toString();
 
         UserContext.set(new LoginUser(USER_ID, SHOP_ID, "店长"));
 
-        service = new DashboardService(orderMapper, productMapper, messageMapper);
+        service = new DashboardService(orderMapper, productMapper, messageMapper, clock);
     }
 
     @AfterEach
@@ -126,9 +135,53 @@ class DashboardServiceTest {
             result = service.messages();
         }
 
-        assertNotEquals(Integer.valueOf(200), result.getCode(),
-                api + " 在没有 shopId 时必须返回失败，不能静默返回一张全 0 的空页面");
+        // ★★ 必须是 401，不能只断言「不是 200」。
+        //    这条原本写的是 assertNotEquals(200)，于是返回 500 也照样绿 ——
+        //    而 500 会让前端弹「服务器出错」，跳不到登录页。
+        //    对照：其余 15 个接口未登录一律 401，而 Dashboard 恰恰是
+        //    用户打开后台看到的第一个页面，最需要「跳到登录页」。
+        assertEquals(Integer.valueOf(401), result.getCode(),
+                api + " 未登录必须返回 401（前端据此跳登录页），不能退化成 500");
         verifyNoInteractions(orderMapper, productMapper, messageMapper);
+    }
+
+    /**
+     * D24 · 「今天」必须来自注入的 {@link Clock}。
+     *
+     * <p>★ 原来 Service 里直接写 {@code LocalDate.now()}，测试也跟着系统日期跑，
+     * 于是「零点前后执行」会让两边的今天错开一天（原注释自己承认了这个风险）。
+     * 同一个项目里 {@code OrderQueryService} 已经注入了 Clock，Dashboard 没做 ——
+     * 两种做法并存，等于给下次改动埋一个「改了一边忘了另一边」的坑。
+     *
+     * <p>★ 钉死到 2026-03-15 之后，如果实现里还是 {@code LocalDate.now()},
+     * 这里就是真实日期而不是 2026-03-15，断言直接红。
+     */
+    @Test
+    @DisplayName("D24 trend 的今天/昨天取自注入的 Clock，而不是系统时钟")
+    void should_take_dates_from_injected_clock_in_trend() {
+        Clock fixed = Clock.fixed(Instant.parse("2026-03-15T10:00:00Z"),
+                ZoneId.of("Asia/Shanghai"));
+        DashboardService withFixed =
+                new DashboardService(orderMapper, productMapper, messageMapper, fixed);
+
+        withFixed.trend();
+
+        verify(orderMapper).sumPaidAmountByHour(SHOP_ID, "2026-03-15");
+        verify(orderMapper).sumPaidAmountByHour(SHOP_ID, "2026-03-14");
+    }
+
+    @Test
+    @DisplayName("D24b metrics 的今天/昨天同样取自注入的 Clock")
+    void should_take_dates_from_injected_clock_in_metrics() {
+        Clock fixed = Clock.fixed(Instant.parse("2026-03-15T10:00:00Z"),
+                ZoneId.of("Asia/Shanghai"));
+        DashboardService withFixed =
+                new DashboardService(orderMapper, productMapper, messageMapper, fixed);
+
+        withFixed.metrics();
+
+        verify(orderMapper).countPaidOrders(SHOP_ID, "2026-03-15");
+        verify(orderMapper).countPaidOrders(SHOP_ID, "2026-03-14");
     }
 
     /**

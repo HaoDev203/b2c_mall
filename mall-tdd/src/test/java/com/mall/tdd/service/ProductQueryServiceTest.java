@@ -13,6 +13,9 @@ import com.mall.tdd.entity.Product;
 import com.mall.tdd.mapper.CategoryMapper;
 import com.mall.tdd.mapper.OrderItemMapper;
 import com.mall.tdd.mapper.ProductMapper;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 import org.apache.poi.ss.usermodel.Cell;
@@ -24,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -613,6 +617,44 @@ class ProductQueryServiceTest {
         assertFalse(data.getResults().get(1).getMessage().isEmpty(), "失败明细必须带原因");
         assertTrue(result.getMsg() == null || !result.getMsg().contains("Exception"),
                 "异常信息不该原样透给前端");
+    }
+
+    /**
+     * P17b · 逐条失败必须落日志。
+     *
+     * <p>★ 这些消息现在只写进返回值的 {@code results[].message}，日志里一个字都没有。
+     * 批量接口「吞异常」是有意为之（一条失败不能炸掉整批），但吞掉之后
+     * <b>必须把异常记下来</b>：否则前端刷新一下现场就没了，
+     * 用户再说「昨天改的那批没生效」，线上无从查起。
+     *
+     * <p>★ 断言两条：能定位到<b>哪一条商品</b>、以及<b>异常堆栈</b>进了日志。
+     * 只记一句 {@code getMessage()} 等于把堆栈丢了 —— {@code database is locked}
+     * 这种只有堆栈才能看出卡在哪个语句。
+     */
+    @Test
+    @DisplayName("P17b 逐条失败要落日志，不能只写在返回值里")
+    void should_log_batch_item_failure() {
+        when(productMapper.updateStatus(2L, SHOP_ID, "off_sale"))
+                .thenThrow(new IllegalStateException("database is locked"));
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(ProductQueryService.class);
+        logger.addAppender(appender);
+        try {
+            ProductBatchCommand cmd = command(Collections.singletonList(2L));
+            cmd.setStatus("off_sale");
+            service.batchUpdate(cmd);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertTrue(appender.list.stream().anyMatch(
+                        e -> e.getFormattedMessage().contains("productId=2")),
+                "日志里要能定位到是哪一条商品失败");
+        assertTrue(appender.list.stream().anyMatch(
+                        e -> e.getThrowableProxy() != null),
+                "异常对象要进日志，只记一句 message 就把堆栈丢了");
     }
 
     @Test
