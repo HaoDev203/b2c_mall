@@ -1050,6 +1050,88 @@ class ProductQueryServiceTest {
         verifyNoInteractions(productMapper);
     }
 
+    /**
+     * P23d · 表格里没有的列，绝不能被写成 NULL。
+     *
+     * <p>★★ 这条对应一次<b>实测出来的灾难</b>：商家想「批量改价」，自己建一个
+     * 只有【商品编码 + 销售价】两列的表格导入，接口返回
+     * {@code code:200, update:1, failed:0}（标准成功提示），
+     * 但库里 {@code name / main_image / status / stock / market_price /
+     * goods_type / category_kind / sort} <b>全部变成 NULL</b>：
+     * 商品名没了、状态空了，前台立刻查不到这个商品。
+     *
+     * <p>★ 商家不会「拿完整导出文件删掉几列」，他们往往直接新建一张两列的表格 ——
+     * 也就是说这不是边角场景，是这条需求的<b>主用法</b>。
+     *
+     * <p>★ 责任不在 Service 装配（读不到就该是 null），在 SQL：全字段无条件 SET
+     * 意味着「没填 = 清空」。所以断言打在 {@code @Update} 原文上 ——
+     * Mock 只能看见「调了 update」，看不见「SET 覆盖了哪些列」。
+     */
+    @Test
+    @DisplayName("P23d 表格缺列不得清空库里字段：每个可缺省的 SET 都要有 <if> 保护")
+    void should_not_blank_columns_missing_from_excel() throws Exception {
+        when(productMapper.countByProductCode(SHOP_ID, "SC-P1")).thenReturn(1);
+
+        // 只有两列：这正是「批量改价」的真实表格形态
+        byte[] xlsx = buildWorkbook(
+                Arrays.asList("商品编码", "销售价"),
+                Collections.singletonList(row("SC-P1", "2888")));
+
+        Result<ImportResultVO> result = service.importProducts(new ByteArrayInputStream(xlsx));
+
+        assertEquals(Integer.valueOf(200), result.getCode(), result.getMsg());
+        assertEquals(Integer.valueOf(1), result.getData().getUpdate());
+
+        ArgumentCaptor<Product> cap = ArgumentCaptor.forClass(Product.class);
+        verify(productMapper).updateByProductCode(eq(SHOP_ID), cap.capture());
+        // 没填就是 null —— 这一层没错，错的是 SQL 拿 null 去覆盖
+        assertNull(cap.getValue().getName(), "表格里没有「商品名称」列");
+        assertNull(cap.getValue().getStatus(), "表格里没有「状态」列");
+
+        // ★ 所以每个可缺省的列都必须包在 <if> 里：null 时整列不出现在 SET 中
+        String updSql = sqlOf(ProductMapper.class, "updateByProductCode");
+        String[] guardFreedColumns = {
+                "p.name", "p.mainImage", "p.price", "p.marketPrice", "p.stock",
+                "p.warehouseStock", "p.storeStock", "p.inflatedSales", "p.goodsType",
+                "p.categoryKind", "p.deliveryTypes", "p.status", "p.sort"};
+        for (String col : guardFreedColumns) {
+            assertTrue(updSql.contains("<if test='" + col + " != null'>"),
+                    "「" + col + "」缺 <if> 保护，表格里少这一列就会把它清空：" + updSql);
+        }
+        // 末尾要有一个恒真的赋值吃掉前面每个 <if> 带的逗号（同 updateStock 的写法）
+        assertTrue(updSql.contains("product_code = product_code"),
+                "缺「吃逗号」的恒真赋值，最后一个 <if> 成立时 SET 会以逗号收尾：" + updSql);
+    }
+
+    /**
+     * P23e · 导入的状态值必须过白名单。
+     *
+     * <p>★★ 实测过的闭环死锁：导入 {@code status = 'hacked'} 直接入库成功，
+     * 然后 —— 前台查不到（只认 {@code on_sale}）、后台想按状态筛出来修，
+     * 反被白名单拒掉（{@code 500 状态取值非法：hacked}）。
+     * <b>同一份枚举，读入口守着、写入口没守</b>，脏数据就成了
+     * 「看不见，也筛不到」的东西。
+     */
+    @Test
+    @DisplayName("P23e 导入的非法状态计入失败，不写库、连编码都不查")
+    void should_reject_illegal_status_on_import() throws Exception {
+        byte[] xlsx = buildWorkbook(
+                Arrays.asList("商品编码", "商品名称", "状态"),
+                Collections.singletonList(row("P001", "手机壳", "hacked")));
+
+        Result<ImportResultVO> result = service.importProducts(new ByteArrayInputStream(xlsx));
+
+        ImportResultVO data = result.getData();
+        assertEquals(Integer.valueOf(1), data.getTotal());
+        assertEquals(Integer.valueOf(1), data.getFailed(), "非法状态必须算失败");
+        assertEquals(Integer.valueOf(0), data.getUpdate(), "不许写进去");
+        assertEquals(Integer.valueOf(0), data.getInsert(), "也不许当新增插进去");
+        // 整行在参数校验阶段就被拒，不该再为它发任何一条 SQL
+        verify(productMapper, never()).countByProductCode(any(), any());
+        verify(productMapper, never()).updateByProductCode(any(), any());
+        verify(productMapper, never()).insert(any());
+    }
+
     /** 供导出断言用的商品：把导出涉及的每一列都填上不同的值 */
     private Product productForExport(Long id, String code, String name) {
         Product p = product(id, name, Integer.valueOf(10));

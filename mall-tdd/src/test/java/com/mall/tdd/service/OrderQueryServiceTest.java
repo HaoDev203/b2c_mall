@@ -54,6 +54,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -627,6 +628,31 @@ class OrderQueryServiceTest {
         verify(adminOrderMapper).shipOrder(1L, SHOP_ID, "SF999");
         verify(adminOrderMapper).shipOrder(3L, SHOP_ID, "SF999");
         verify(adminOrderMapper, never()).shipOrder(eq(2L), anyLong(), any());
+    }
+
+    /**
+     * O20b · 批量发货没有物流单号 → 整批拒绝。
+     *
+     * <p>★★ 这是<b>不可逆的数据损坏</b>，不是「少填一个字段」那么轻：
+     * 放行之后两个订单会变成 {@code PENDING_RECEIVE} 且 {@code tracking_no} 为 NULL，
+     * 买家看不到物流；而 {@code shipOrder} 的 WHERE 带
+     * {@code status = 'PENDING_SHIP'}，状态已经不是待发货了，
+     * <b>商家连补单号的入口都没有</b>。
+     *
+     * <p>★ 单条 {@code ship()} 一直守着这条，批量入口漏了 —— 同一业务规则
+     * 两个入口不一致，等于把校验做在了错误的那一边。
+     */
+    @Test
+    @DisplayName("O20b 批量发货不带物流单号：整批拒绝，一个 SQL 都不发")
+    void should_reject_batch_ship_without_tracking_no() {
+        for (String no : Arrays.asList(null, "", "   ")) {
+            Result<BatchResultVO> r = service.batchShip(Arrays.asList(1L, 2L), no);
+
+            assertEquals(Integer.valueOf(500), r.getCode(), "单号=[" + no + "] 必须拒绝");
+            assertNull(r.getData(), "整批非法时不该产出逐条结果");
+        }
+        // 整批非法就直接返回：连状态都不用查，更不能写库
+        verifyNoInteractions(adminOrderMapper);
     }
 
     @Test
