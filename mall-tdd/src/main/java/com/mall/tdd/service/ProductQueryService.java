@@ -16,6 +16,7 @@ import com.mall.tdd.mapper.CategoryMapper;
 import com.mall.tdd.mapper.OrderItemMapper;
 import com.mall.tdd.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -42,6 +43,7 @@ import java.util.Set;
  *   <li>删除前先 {@code countByIdAndShop} 预检，别家的商品连订单引用都不去查。</li>
  * </ol>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductQueryService {
@@ -226,6 +228,7 @@ public class ProductQueryService {
         } catch (RuntimeException e) {
             // 用户传了 .xls / 图片 / 改了扩展名的文件，都可能在这里失败。
             // 与其抛 500，不如告诉他用导出的模板。
+            log.warn("Excel 解析失败 shopId={}", shopId, e);
             return Result.fail("Excel 解析失败，请使用导出的模板（.xlsx）重新填写");
         }
         if (rows.isEmpty()) {
@@ -264,6 +267,7 @@ public class ProductQueryService {
                 }
             } catch (RuntimeException e) {
                 failed++;
+                log.warn("导入失败 shopId={} 商品编码={}", shopId, code, e);
             }
         }
 
@@ -467,6 +471,11 @@ public class ProductQueryService {
             item.setSuccess(false);
             String msg = e.getMessage();
             item.setMessage(msg == null || msg.isEmpty() ? "更新失败" : msg);
+            // ★★ 吞异常是设计，但吞掉之后必须留现场：这些消息原先只写进返回值，
+            //   日志里一个字都没有 —— 前端刷新一下就没了，用户再问
+            //   「昨天改的那批怎么没生效」，线上无从查起。
+            //   带上 productId 才能定位是哪一条，带上 e 才有堆栈。
+            log.warn("批量设置失败 shopId={} productId={}：{}", shopId, id, msg, e);
         }
         return item;
     }

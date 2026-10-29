@@ -16,6 +16,7 @@ import com.mall.tdd.enums.OrderStatus;
 import com.mall.tdd.mapper.AdminOrderMapper;
 import com.mall.tdd.mapper.OrderMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -45,6 +46,7 @@ import java.util.Set;
  * </ol>
  * 列表过滤挡不住「知道 id 直接构造请求」—— 所以 O22 和 O23 是两条不同的测试。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderQueryService {
@@ -324,6 +326,9 @@ public class OrderQueryService {
             item.setSuccess(false);
             String msg = e.getMessage();
             item.setMessage(msg == null || msg.isEmpty() ? "发货失败" : msg);
+            // ★ 同 P17b：批量的 catch 是「设计好的吞异常」，吞了就必须留现场，
+            //   否则这条失败只活在前端那一次渲染里。
+            log.warn("批量发货失败 shopId={} orderId={}：{}", shopId, orderId, msg, e);
         }
         return item;
     }

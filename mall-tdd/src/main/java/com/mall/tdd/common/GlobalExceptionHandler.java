@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
@@ -61,6 +62,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public Result<Void> handleUnknown(Exception e) {
         log.error("未捕获异常", e);
         return Result.fail("服务器繁忙，请稍后重试");
+    }
+
+    /**
+     * 上传文件超过大小上限。
+     *
+     * <p>★ 不处理的话它会落到下面的 {@code Exception.class} 兜底，变成
+     * 「服务器繁忙，请稍后重试」—— 商家只是传了一张大表，却以为系统坏了，
+     * 反复重试（每次都被拒），永远找不到原因。实测 2.5MB 的 xlsx 就是这个表现。
+     *
+     * <p>★ 上限在 {@code application.yml} 的 {@code spring.servlet.multipart} 里配
+     * （默认 1MB 对 Excel 太小）。这里给的是<b>可执行的建议</b>：拆成几个文件分批发。
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public Result<Void> handleUploadTooLarge(MaxUploadSizeExceededException e) {
+        log.warn("上传文件超过大小上限：{}", e.getMessage());
+        return Result.fail("文件太大，请拆分成多个文件分批导入");
     }
 
     private String msgFor(HttpStatus status) {

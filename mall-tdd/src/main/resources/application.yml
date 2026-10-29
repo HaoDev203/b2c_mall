@@ -7,6 +7,15 @@ spring:
     # ★ 独立库：不碰 shop/shop.db（那是设计模式作业的演示库）
     url: jdbc:sqlite:D:/demo/commerce platform/mall-tdd/mall.db?foreign_keys=on
 
+  servlet:
+    multipart:
+      # ★★ 必须显式配置。Spring Boot 默认单个文件上限 1MB ——
+      # 一个几千行的商品表轻松超过它，而超限时抛的 MaxUploadSizeExceededException
+      # 会被兜底成「服务器繁忙」。实测 2.5MB 的 xlsx 返回
+      # HTTP 500 + "服务器繁忙，请稍后重试"，商家只会以为系统坏了。
+      max-file-size: 20MB
+      max-request-size: 20MB
+
 mybatis:
   configuration:
     map-underscore-to-camel-case: true

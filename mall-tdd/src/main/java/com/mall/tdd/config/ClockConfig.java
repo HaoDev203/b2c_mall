@@ -13,9 +13,9 @@ import java.time.Clock;
  * 断言会在某一天突然变红。注入 {@link Clock} 之后，测试用
  * {@code Clock.fixed(...)} 把「今天」钉死，生产用系统时钟。
  *
- * <p>本期 Controller 还没写、测试也不启动 Spring 容器，所以这个 Bean 暂时
- * 只有「将来装配时不会因为缺依赖而报错」的作用。但它是 Service 能用
- * 构造器注入 Clock 的前提，缺了它 {@code @RequiredArgsConstructor} 就装不起来。
+ * <p>★ 现在 {@code OrderQueryService} 与 {@code DashboardService} 都通过构造器注入它：
+ * 两者都依赖「今天」，一旦直接写 {@code LocalDate.now()}，测试断言就会在
+ * 零点前后跟 Service 差一天，变成偶发红。
  */
 @Configuration
 public class ClockConfig {

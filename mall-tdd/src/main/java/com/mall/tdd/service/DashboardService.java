@@ -14,6 +14,7 @@ import com.mall.tdd.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -41,6 +42,15 @@ public class DashboardService {
     private final OrderMapper orderMapper;
     private final ProductMapper productMapper;
     private final MessageMapper messageMapper;
+    /**
+     * 注入而不是直接 {@code LocalDate.now()}。
+     *
+     * <p>★ 原来这里用系统时钟，测试也照着算「今天」，两边看着一致 ——
+     * 但「零点前后执行」会让它们算出不同的日期，断言莫名其妙变红。
+     * 同一个项目里 {@link OrderQueryService} 早就注入了 Clock，两种做法并存
+     * 本身就是隐患：下次改一边忘另一边。
+     */
+    private final Clock clock;
 
     /**
      * 顶部 6 张状态卡片。
@@ -51,7 +61,7 @@ public class DashboardService {
     public Result<Map<String, Long>> cards() {
         Long shopId = currentShopId();
         if (shopId == null) {
-            return Result.fail(MSG_NO_SHOP);
+            return Result.unauthorized(MSG_NO_SHOP);
         }
 
         Map<String, Long> data = new LinkedHashMap<String, Long>();
@@ -75,10 +85,10 @@ public class DashboardService {
     public Result<TrendVO> trend() {
         Long shopId = currentShopId();
         if (shopId == null) {
-            return Result.fail(MSG_NO_SHOP);
+            return Result.unauthorized(MSG_NO_SHOP);
         }
 
-        LocalDate now = LocalDate.now();
+        LocalDate now = LocalDate.now(clock);
         String today = now.toString();
         String yesterday = now.minusDays(1).toString();
 
@@ -96,10 +106,10 @@ public class DashboardService {
     public Result<MetricsVO> metrics() {
         Long shopId = currentShopId();
         if (shopId == null) {
-            return Result.fail(MSG_NO_SHOP);
+            return Result.unauthorized(MSG_NO_SHOP);
         }
 
-        LocalDate now = LocalDate.now();
+        LocalDate now = LocalDate.now(clock);
         String today = now.toString();
         String yesterday = now.minusDays(1).toString();
 
@@ -133,7 +143,7 @@ public class DashboardService {
     public Result<List<MessageVO>> messages() {
         Long shopId = currentShopId();
         if (shopId == null) {
-            return Result.fail(MSG_NO_SHOP);
+            return Result.unauthorized(MSG_NO_SHOP);
         }
 
         List<Message> rows = messageMapper.selectByShop(shopId, MESSAGE_LIMIT);
